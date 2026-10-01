@@ -15,18 +15,18 @@ How to use this file
 Goal: a repo where every push is checked automatically.
 Learn: uv + lockfiles · FastAPI routes · pytest + TestClient · ruff · mypy · GitHub Actions
 
-- [ ] 0.1 Create public repo `pr-review-agent` on GitHub (README, MIT license, Python .gitignore). Clone it.
-- [ ] 0.2 Copy this starter kit into the repo root. Add `.env` and `*.pem` to .gitignore.
+- [x] 0.1 Create public repo `pr-review-agent` on GitHub (README, MIT license, Python .gitignore). Clone it.
+- [x] 0.2 Copy this starter kit into the repo root. Add `.env` and `*.pem` to .gitignore.
       Commit `chore: project docs and Claude Code setup`, push to main (the only direct push to main).
-- [ ] 0.3 Create a second, empty repo `review-bot-sandbox` (used from Phase 1).
-- [ ] 0.4 New branch `chore/phase-0-setup`. Run `uv init`, delete the generated main.py, `uv python pin 3.12`.
-- [ ] 0.5 `uv add "fastapi[standard]"` then `uv add --dev pytest ruff mypy`. Commit uv.lock.
-- [ ] 0.6 Create `app/__init__.py` (empty), `app/main.py`, `tests/`. Paste
+- [x] 0.3 Create a second, empty repo `review-bot-sandbox` (used from Phase 1).
+- [x] 0.4 New branch `chore/phase-0-setup`. Run `uv init`, delete the generated main.py, `uv python pin 3.12`.
+- [x] 0.5 `uv add "fastapi[standard]"` then `uv add --dev pytest ruff mypy`. Commit uv.lock.
+- [x] 0.6 Create `app/__init__.py` (empty), `app/main.py`, `tests/`. Paste
       docs/templates/pyproject-tools.toml at the bottom of pyproject.toml.
-- [ ] 0.7 In app/main.py: a FastAPI app with `GET /health` returning `{"status": "ok"}`
+- [x] 0.7 In app/main.py: a FastAPI app with `GET /health` returning `{"status": "ok"}`
       (add a return type hint). Run the dev server; open /health and /docs.
-- [ ] 0.8 tests/test_health.py: use FastAPI's TestClient to call /health; assert status 200 and the JSON body. Run `uv run pytest`.
-- [ ] 0.9 Run ruff check, ruff format, mypy; fix what they report.
+- [x] 0.8 tests/test_health.py: use FastAPI's TestClient to call /health; assert status 200 and the JSON body. Run `uv run pytest`.
+- [x] 0.9 Run ruff check, ruff format, mypy; fix what they report.
 - [ ] 0.10 Copy docs/templates/ci.yml to `.github/workflows/ci.yml`. Check the latest major
       versions of `actions/checkout` and `astral-sh/setup-uv` on their GitHub pages.
 - [ ] 0.11 Push the branch, open a PR, read the CI log if red, merge when green.

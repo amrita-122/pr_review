@@ -1,4 +1,24 @@
-# Paste at the bottom of pyproject.toml (Phase 0, step 0.6)
+[project]
+name = "pr-review-agent"
+version = "0.1.0"
+description = "Github PR review agent"
+readme = "README.md"
+authors = [
+    { name = "Amrita", email = "amritasood59@gmail.com" }
+]
+
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi[standard]>=0.142.2",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]          # lets tests import `app` from the repo root
