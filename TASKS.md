@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 0**
+**Current phase: 1**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -27,9 +27,9 @@ Learn: uv + lockfiles · FastAPI routes · pytest + TestClient · ruff · mypy �
       (add a return type hint). Run the dev server; open /health and /docs.
 - [x] 0.8 tests/test_health.py: use FastAPI's TestClient to call /health; assert status 200 and the JSON body. Run `uv run pytest`.
 - [x] 0.9 Run ruff check, ruff format, mypy; fix what they report.
-- [ ] 0.10 Copy docs/templates/ci.yml to `.github/workflows/ci.yml`. Check the latest major
+- [x] 0.10 Copy docs/templates/ci.yml to `.github/workflows/ci.yml`. Check the latest major
       versions of `actions/checkout` and `astral-sh/setup-uv` on their GitHub pages.
-- [ ] 0.11 Push the branch, open a PR, read the CI log if red, merge when green.
+- [x] 0.11 Push the branch, open a PR, read the CI log if red, merge when green.
       Optional: Settings → Branches → require the CI check before merging to main.
 **Done when:** a PR is merged with green CI.
 
