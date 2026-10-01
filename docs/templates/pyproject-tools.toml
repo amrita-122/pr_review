@@ -1,0 +1,19 @@
+# Paste at the bottom of pyproject.toml (Phase 0, step 0.6)
+
+[tool.pytest.ini_options]
+pythonpath = ["."]          # lets tests import `app` from the repo root
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]   # errors, pyflakes, imports, bugbear, modern syntax, security
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]       # assert is fine in tests
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
