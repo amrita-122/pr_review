@@ -39,20 +39,20 @@ Goal: the DEPLOYED app receives a real PR webhook, verifies it, ignores duplicat
 Learn: webhooks · HMAC signatures · idempotency / at-least-once delivery · pydantic-settings ·
 GitHub App auth (JWT → installation token) · SQLAlchemy 2.0 + Alembic · BackgroundTasks · Docker · Railway
 
-- [ ] 1.1 `uv add pydantic-settings`. app/config.py: a Settings class reading the vars in
+- [x] 1.1 `uv add pydantic-settings`. app/config.py: a Settings class reading the vars in
       .env.example. Copy .env.example → .env and fill it in as you go (never commit .env).
-- [ ] 1.2 Go to smee.io → new channel. Put the URL in .env as SMEE_URL. Run smee-client
+- [x] 1.2 Go to smee.io → new channel. Put the URL in .env as SMEE_URL. Run smee-client
       (command in CLAUDE.md) in a separate terminal whenever you develop locally.
-- [ ] 1.3 Create the GitHub App (GitHub → Settings → Developer settings → GitHub Apps → New):
+- [x] 1.3 Create the GitHub App (GitHub → Settings → Developer settings → GitHub Apps → New):
       webhook URL = your smee URL; webhook secret = a random 64-char hex string (generate it with
       Python's `secrets.token_hex(32)`) → also in .env; permissions: Pull requests Read & write,
       Contents Read-only, Metadata Read-only; subscribe to "Pull request"; "Only on this account".
       Note the App ID. Generate a private key (.pem) → base64-encode it into .env as
       GITHUB_PRIVATE_KEY_BASE64 (avoids newline problems on Railway). Keep the .pem outside the repo.
-- [ ] 1.4 Install the App on `review-bot-sandbox` only. Push a tiny Python app there and open a PR.
-- [ ] 1.5 App settings → Advanced → Recent Deliveries: study the headers and payload. Save the
+- [x] 1.4 Install the App on `review-bot-sandbox` only. Push a tiny Python app there and open a PR.
+- [x] 1.5 App settings → Advanced → Recent Deliveries: study the headers and payload. Save the
       payload as tests/fixtures/pull_request_opened.json. This is the real shape you code against.
-- [ ] 1.6 `POST /webhooks/github`: read the RAW request body bytes, compute HMAC-SHA256 with the
+- [x] 1.6 `POST /webhooks/github`: read the RAW request body bytes, compute HMAC-SHA256 with the
       secret, compare with the `X-Hub-Signature-256` header using `hmac.compare_digest`. Return 401 if
       missing or wrong. Tests: valid, invalid, missing (the test computes the signature over the fixture).
 - [ ] 1.7 Only handle `X-GitHub-Event: pull_request` with action opened / reopened / synchronize.
