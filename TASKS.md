@@ -72,10 +72,10 @@ GitHub App auth (JWT → installation token) · SQLAlchemy 2.0 + Alembic · Back
       "Review bot received this PR". Tests mock GitHub with respx (`uv add --dev respx`).
 - [x] 1.13 Dockerfile (Claude Code may scaffold it): install with `uv sync --locked --no-dev`,
       start with `fastapi run` on `$PORT`. Build and run it locally once.
-- [ ] 1.14 Railway: new project from your GitHub repo, add Postgres, set env vars, pre-deploy command
+- [x] 1.14 Railway: new project from your GitHub repo, add Postgres, set env vars, pre-deploy command
       `alembic upgrade head`, health check path `/health`.
-- [ ] 1.15 Change the App's webhook URL to `https://<railway-domain>/webhooks/github`. Open a sandbox PR.
-- [ ] 1.16 In Recent Deliveries, click Redeliver on that delivery → confirm no second comment.
+- [x] 1.15 Change the App's webhook URL to `https://<railway-domain>/webhooks/github`. Open a sandbox PR.
+- [x] 1.16 In Recent Deliveries, click Redeliver on that delivery → confirm no second comment.
 **Done when:** the deployed app comments on new sandbox PRs; redelivery doesn't duplicate; signature tests pass in CI.
 
 ---
