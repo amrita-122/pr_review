@@ -39,38 +39,38 @@ Goal: the DEPLOYED app receives a real PR webhook, verifies it, ignores duplicat
 Learn: webhooks · HMAC signatures · idempotency / at-least-once delivery · pydantic-settings ·
 GitHub App auth (JWT → installation token) · SQLAlchemy 2.0 + Alembic · BackgroundTasks · Docker · Railway
 
-- [ ] 1.1 `uv add pydantic-settings`. app/config.py: a Settings class reading the vars in
+- [x] 1.1 `uv add pydantic-settings`. app/config.py: a Settings class reading the vars in
       .env.example. Copy .env.example → .env and fill it in as you go (never commit .env).
-- [ ] 1.2 Go to smee.io → new channel. Put the URL in .env as SMEE_URL. Run smee-client
+- [x] 1.2 Go to smee.io → new channel. Put the URL in .env as SMEE_URL. Run smee-client
       (command in CLAUDE.md) in a separate terminal whenever you develop locally.
-- [ ] 1.3 Create the GitHub App (GitHub → Settings → Developer settings → GitHub Apps → New):
+- [x] 1.3 Create the GitHub App (GitHub → Settings → Developer settings → GitHub Apps → New):
       webhook URL = your smee URL; webhook secret = a random 64-char hex string (generate it with
       Python's `secrets.token_hex(32)`) → also in .env; permissions: Pull requests Read & write,
       Contents Read-only, Metadata Read-only; subscribe to "Pull request"; "Only on this account".
       Note the App ID. Generate a private key (.pem) → base64-encode it into .env as
       GITHUB_PRIVATE_KEY_BASE64 (avoids newline problems on Railway). Keep the .pem outside the repo.
-- [ ] 1.4 Install the App on `review-bot-sandbox` only. Push a tiny Python app there and open a PR.
-- [ ] 1.5 App settings → Advanced → Recent Deliveries: study the headers and payload. Save the
+- [x] 1.4 Install the App on `review-bot-sandbox` only. Push a tiny Python app there and open a PR.
+- [x] 1.5 App settings → Advanced → Recent Deliveries: study the headers and payload. Save the
       payload as tests/fixtures/pull_request_opened.json. This is the real shape you code against.
-- [ ] 1.6 `POST /webhooks/github`: read the RAW request body bytes, compute HMAC-SHA256 with the
+- [x] 1.6 `POST /webhooks/github`: read the RAW request body bytes, compute HMAC-SHA256 with the
       secret, compare with the `X-Hub-Signature-256` header using `hmac.compare_digest`. Return 401 if
       missing or wrong. Tests: valid, invalid, missing (the test computes the signature over the fixture).
-- [ ] 1.7 Only handle `X-GitHub-Event: pull_request` with action opened / reopened / synchronize.
+- [x] 1.7 Only handle `X-GitHub-Event: pull_request` with action opened / reopened / synchronize.
       Anything else → 202 and ignore. Parse only the fields you need into a Pydantic model:
       installation id, repo owner/name, PR number, head SHA.
-- [ ] 1.8 Database: run Postgres locally (Docker image `postgres:16`). `uv add sqlalchemy "psycopg[binary]" alembic`.
+- [x] 1.8 Database: run Postgres locally (Docker image `postgres:16`). `uv add sqlalchemy "psycopg[binary]" alembic`.
       Model `WebhookDelivery` (delivery_id primary key, event, action, received_at).
       `alembic init`, point it at your models and DATABASE_URL, first migration, upgrade.
-- [ ] 1.9 Idempotency: insert the `X-GitHub-Delivery` id first. If it already exists, return 202
+- [x] 1.9 Idempotency: insert the `X-GitHub-Delivery` id first. If it already exists, return 202
       and do nothing. Test: the same delivery sent twice is processed once.
-- [ ] 1.10 Return 202 immediately; schedule the work with FastAPI BackgroundTasks.
-- [ ] 1.11 app/github/auth.py (`uv add "pyjwt[crypto]" httpx`): build the App JWT (RS256; iat 60s in
+- [x] 1.10 Return 202 immediately; schedule the work with FastAPI BackgroundTasks.
+- [x] 1.11 app/github/auth.py (`uv add "pyjwt[crypto]" httpx`): build the App JWT (RS256; iat 60s in
       the past; exp ≤ 10 min; iss = App ID), exchange it at
       `POST /app/installations/{installation_id}/access_tokens`, cache the token until ~5 min before its `expires_at`.
-- [ ] 1.12 app/github/client.py: post a PR comment via
+- [x] 1.12 app/github/client.py: post a PR comment via
       `POST /repos/{owner}/{repo}/issues/{number}/comments` (PR conversation comments use the issues API):
       "Review bot received this PR". Tests mock GitHub with respx (`uv add --dev respx`).
-- [ ] 1.13 Dockerfile (Claude Code may scaffold it): install with `uv sync --locked --no-dev`,
+- [x] 1.13 Dockerfile (Claude Code may scaffold it): install with `uv sync --locked --no-dev`,
       start with `fastapi run` on `$PORT`. Build and run it locally once.
 - [ ] 1.14 Railway: new project from your GitHub repo, add Postgres, set env vars, pre-deploy command
       `alembic upgrade head`, health check path `/health`.

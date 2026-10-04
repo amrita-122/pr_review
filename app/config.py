@@ -11,6 +11,15 @@ class Settings(BaseSettings):
     smee_url: str | None = None
     database_url: str
 
+    @property
+    def sqlalchemy_url(self) -> str:
+        """Force the psycopg 3 driver; Railway/.env URLs are often plain postgres(ql)://."""
+        url = self.database_url
+        for prefix in ("postgres://", "postgresql://"):
+            if url.startswith(prefix):
+                return "postgresql+psycopg://" + url[len(prefix) :]
+        return url
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
 
