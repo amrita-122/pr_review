@@ -10,20 +10,28 @@ authors = [
 requires-python = ">=3.12"
 
 dependencies = [
+    "alembic>=1.20.0",
     "fastapi[standard]>=0.142.2",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
+    "pyjwt[crypto]>=2.15.1",
+    "sqlalchemy>=2.1.3",
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=2.3.1",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "respx>=0.23.1",
     "ruff>=0.16.9",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]          # lets tests import `app` from the repo root
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100

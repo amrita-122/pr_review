@@ -55,22 +55,22 @@ GitHub App auth (JWT → installation token) · SQLAlchemy 2.0 + Alembic · Back
 - [x] 1.6 `POST /webhooks/github`: read the RAW request body bytes, compute HMAC-SHA256 with the
       secret, compare with the `X-Hub-Signature-256` header using `hmac.compare_digest`. Return 401 if
       missing or wrong. Tests: valid, invalid, missing (the test computes the signature over the fixture).
-- [ ] 1.7 Only handle `X-GitHub-Event: pull_request` with action opened / reopened / synchronize.
+- [x] 1.7 Only handle `X-GitHub-Event: pull_request` with action opened / reopened / synchronize.
       Anything else → 202 and ignore. Parse only the fields you need into a Pydantic model:
       installation id, repo owner/name, PR number, head SHA.
-- [ ] 1.8 Database: run Postgres locally (Docker image `postgres:16`). `uv add sqlalchemy "psycopg[binary]" alembic`.
+- [x] 1.8 Database: run Postgres locally (Docker image `postgres:16`). `uv add sqlalchemy "psycopg[binary]" alembic`.
       Model `WebhookDelivery` (delivery_id primary key, event, action, received_at).
       `alembic init`, point it at your models and DATABASE_URL, first migration, upgrade.
-- [ ] 1.9 Idempotency: insert the `X-GitHub-Delivery` id first. If it already exists, return 202
+- [x] 1.9 Idempotency: insert the `X-GitHub-Delivery` id first. If it already exists, return 202
       and do nothing. Test: the same delivery sent twice is processed once.
-- [ ] 1.10 Return 202 immediately; schedule the work with FastAPI BackgroundTasks.
-- [ ] 1.11 app/github/auth.py (`uv add "pyjwt[crypto]" httpx`): build the App JWT (RS256; iat 60s in
+- [x] 1.10 Return 202 immediately; schedule the work with FastAPI BackgroundTasks.
+- [x] 1.11 app/github/auth.py (`uv add "pyjwt[crypto]" httpx`): build the App JWT (RS256; iat 60s in
       the past; exp ≤ 10 min; iss = App ID), exchange it at
       `POST /app/installations/{installation_id}/access_tokens`, cache the token until ~5 min before its `expires_at`.
-- [ ] 1.12 app/github/client.py: post a PR comment via
+- [x] 1.12 app/github/client.py: post a PR comment via
       `POST /repos/{owner}/{repo}/issues/{number}/comments` (PR conversation comments use the issues API):
       "Review bot received this PR". Tests mock GitHub with respx (`uv add --dev respx`).
-- [ ] 1.13 Dockerfile (Claude Code may scaffold it): install with `uv sync --locked --no-dev`,
+- [x] 1.13 Dockerfile (Claude Code may scaffold it): install with `uv sync --locked --no-dev`,
       start with `fastapi run` on `$PORT`. Build and run it locally once.
 - [ ] 1.14 Railway: new project from your GitHub repo, add Postgres, set env vars, pre-deploy command
       `alembic upgrade head`, health check path `/health`.
