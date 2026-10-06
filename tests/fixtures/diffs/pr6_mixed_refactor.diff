@@ -1,0 +1,42 @@
+diff --git a/http_util.py b/http_util.py
+new file mode 100644
+index 0000000..9364261
+--- /dev/null
++++ b/http_util.py
+@@ -0,0 +1,4 @@
++def fetch(url):
++    import requests
++
++    return requests.get(url, timeout=5).text
+diff --git a/main.py b/main.py
+index 96a05aa..9130908 100644
+--- a/main.py
++++ b/main.py
+@@ -1,7 +1,9 @@
+ 
++
+ def add(a, b):
+     return a + b
+ 
+ 
+-def greet(name):
+-    return f"Hello, {name}!"
+\ No newline at end of file
++def greet(name: str) -> str:
++    """Return a greeting for name."""
++    return f"Hello, {name}!"
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..2c24336
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1 @@
++requests==2.31.0
+diff --git a/uv.lock b/uv.lock
+new file mode 100644
+index 0000000..f56f9bd
+--- /dev/null
++++ b/uv.lock
+@@ -0,0 +1,2 @@
++# lockfile
++requests==2.31.0 --hash=sha256:aaaa

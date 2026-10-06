@@ -4,15 +4,15 @@
 |---|---|---|---|
 | uv, pyproject, lockfiles | 0 | Implemented | 6910559 |
 | FastAPI routes, dependencies | 0–1 | Implemented | 2119733, 4144209 |
-| pytest, TestClient, respx | 0–2 | Learning (Phase 1 tests done; more in Phase 2) | 2119733, cae16e8, 4144209 |
+| pytest, TestClient, respx | 0–2 | Learning  | 2119733, cae16e8, 4144209, 5fa18ee |
 | GitHub Actions CI | 0, 4 | Learning (Phase 0 done; eval gate in Phase 4) | 3029596 |
 | Webhooks + HMAC signatures | 1 | Implemented | cae16e8 |
 | Idempotency, at-least-once delivery | 1 | Implemented | 4144209 |
 | GitHub App auth (JWT → installation token) | 1 | Implemented | 4144209 |
 | SQLAlchemy 2.0 + Alembic | 1 | Implemented | 4144209 |
 | Docker + Railway deploy | 1 | Implemented | 4144209, ebfc06a |
-| Unified diffs, hunks, line mapping | 2 | Not started | |
-| GitHub reviews API | 2 | Not started | |
+| Unified diffs, hunks, line mapping | 2 | Implemented with help | 36505ec |
+| GitHub reviews API | 2 | Implemented with help | 5fa18ee |
 | Structured output | 3 | Not started | |
 | LangGraph state, reducers, Send | 3 | Not started | |
 | Prompt design + versioning | 3 | Not started | |
