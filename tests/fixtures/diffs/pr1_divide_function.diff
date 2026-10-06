@@ -1,0 +1,15 @@
+diff --git a/main.py b/main.py
+index 96a05aa..85537ac 100644
+--- a/main.py
++++ b/main.py
+@@ -4,4 +4,7 @@ def add(a, b):
+ 
+ 
+ def greet(name):
+-    return f"Hello, {name}!"
+\ No newline at end of file
++    return f"Hello, {name}!"
++
++def divide(a, b):
++    return a * b
+\ No newline at end of file
