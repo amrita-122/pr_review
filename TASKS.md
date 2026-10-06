@@ -100,7 +100,7 @@ Learn: unified diff format · hunks · RIGHT/LEFT side · GitHub pull request re
 - [x] 2.7 Post ONE review: `POST /repos/{owner}/{repo}/pulls/{number}/reviews` with commit_id = head SHA,
       event = "COMMENT", a summary body, and comments of {path, line, side: "RIGHT", body}.
       No valid findings → summary only.
-- [ ] 2.8 Save real diffs from sandbox PRs into tests/fixtures/diffs/. They seed your eval set later.
+- [x] 2.8 Save real diffs from sandbox PRs into tests/fixtures/diffs/. They seed your eval set later.
 **Done when:** comments land on the correct lines on real PRs; a deliberately wrong line is dropped
 and logged while the rest of the review still posts.
 
