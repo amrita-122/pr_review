@@ -11,9 +11,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.config import get_settings
 from app.github import auth
-from app.github.client import post_pr_comment
-from app.github.webhooks import parse_pull_request_event
+from app.github.client import ReviewComment, list_pr_files, post_pr_comment, post_review
+from app.github.webhooks import PullRequestEvent, parse_pull_request_event
 from app.jobs.handlers import process_pull_request
+from app.review.schemas import Finding
 from tests.test_webhook_signatures import FIXTURE_PATH
 
 _key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -81,17 +82,84 @@ async def test_post_pr_comment() -> None:
     assert request.headers["Authorization"] == "Bearer tok"
 
 
-@respx.mock
-async def test_process_pull_request_posts_comment() -> None:
-    event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
+FILES = [
+    {
+        "filename": "app/db.py",
+        "status": "modified",
+        "patch": "@@ -1,2 +1,3 @@\n import os\n+password = 'hunter2'\n print(1)",
+    },
+    {"filename": "uv.lock", "status": "modified", "patch": "@@ -1 +1 @@\n-a\n+b"},
+    {"filename": "logo.png", "status": "added"},
+]
+
+
+def _mock_pipeline(event: PullRequestEvent) -> respx.Route:
+    base = f"https://api.github.com/repos/{event.owner}/{event.repo}/pulls/{event.number}"
     respx.post(
         f"https://api.github.com/app/installations/{event.installation_id}/access_tokens"
     ).mock(return_value=_token_response())
-    comment = respx.post(
-        f"https://api.github.com/repos/{event.owner}/{event.repo}/issues/{event.number}/comments"
-    ).mock(return_value=httpx.Response(201, json={}))
+    respx.get(f"{base}/files").mock(return_value=httpx.Response(200, json=FILES))
+    return respx.post(f"{base}/reviews")
+
+
+@respx.mock
+async def test_post_review_is_always_comment_event() -> None:
+    route = respx.post("https://api.github.com/repos/o/r/pulls/3/reviews").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    await post_review(
+        "tok", "o", "r", 3, "abc", "hi", [ReviewComment(path="a.py", line=2, body="b")]
+    )
+    sent = json.loads(route.calls[0].request.content)
+    assert sent == {
+        "commit_id": "abc",
+        "event": "COMMENT",
+        "body": "hi",
+        "comments": [{"path": "a.py", "line": 2, "body": "b", "side": "RIGHT"}],
+    }
+
+
+@respx.mock
+async def test_process_pull_request_posts_one_review() -> None:
+    event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
+    reviews = _mock_pipeline(event).mock(return_value=httpx.Response(200, json={}))
     await process_pull_request(event)
-    assert comment.called
+    assert reviews.call_count == 1
+    sent = json.loads(reviews.calls[0].request.content)
+    assert sent["commit_id"] == event.head_sha
+    assert sent["event"] == "COMMENT"
+    assert [(c["path"], c["line"]) for c in sent["comments"]] == [("app/db.py", 2)]
+    assert "uv.lock" in sent["body"] and "logo.png" in sent["body"]
+
+
+@respx.mock
+async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.jobs import handlers
+    from app.review.fake import review_file
+
+    def with_bad_line(path: str, numbered: str) -> list[Finding]:
+        real = review_file(path, numbered)
+        return [*real, real[0].model_copy(update={"line": 999})]
+
+    monkeypatch.setattr(handlers, "review_file", with_bad_line)
+    event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
+    reviews = _mock_pipeline(event).mock(return_value=httpx.Response(200, json={}))
+    await process_pull_request(event)
+    sent = json.loads(reviews.calls[0].request.content)
+    assert [c["line"] for c in sent["comments"]] == [2]
+
+
+@respx.mock
+async def test_falls_back_to_summary_when_github_rejects_comments() -> None:
+    event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
+    reviews = _mock_pipeline(event).mock(
+        side_effect=[httpx.Response(422, json={}), httpx.Response(200, json={})]
+    )
+    await process_pull_request(event)
+    assert reviews.call_count == 2
+    assert json.loads(reviews.calls[1].request.content)["comments"] == []
 
 
 @respx.mock
@@ -101,3 +169,45 @@ async def test_process_pull_request_swallows_errors() -> None:
         f"https://api.github.com/app/installations/{event.installation_id}/access_tokens"
     ).mock(return_value=httpx.Response(500))
     await process_pull_request(event)  # must not raise
+
+
+def _file(name: str, patch: str | None = "@@ -1 +1 @@\n-a\n+b") -> dict[str, object]:
+    item: dict[str, object] = {"filename": name, "status": "modified", "sha": "x"}
+    if patch is not None:
+        item["patch"] = patch
+    return item
+
+
+@respx.mock
+async def test_list_pr_files_single_page() -> None:
+    route = respx.get("https://api.github.com/repos/o/r/pulls/3/files").mock(
+        return_value=httpx.Response(200, json=[_file("a.py")])
+    )
+    files = await list_pr_files("tok", "o", "r", 3)
+    assert [f.filename for f in files] == ["a.py"]
+    assert route.calls[0].request.url.params["per_page"] == "100"
+    assert route.calls[0].request.headers["Authorization"] == "Bearer tok"
+
+
+@respx.mock
+async def test_list_pr_files_follows_link_header() -> None:
+    page2 = "https://api.github.com/repositories/1/pulls/3/files?per_page=100&page=2"
+    respx.get("https://api.github.com/repos/o/r/pulls/3/files").mock(
+        return_value=httpx.Response(
+            200, json=[_file("a.py")], headers={"Link": f'<{page2}>; rel="next"'}
+        )
+    )
+    second = respx.get(page2).mock(return_value=httpx.Response(200, json=[_file("b.py")]))
+    files = await list_pr_files("tok", "o", "r", 3)
+    assert [f.filename for f in files] == ["a.py", "b.py"]
+    assert second.call_count == 1
+
+
+@respx.mock
+async def test_list_pr_files_marks_missing_patch_as_skipped() -> None:
+    respx.get("https://api.github.com/repos/o/r/pulls/3/files").mock(
+        return_value=httpx.Response(200, json=[_file("img.png", patch=None), _file("a.py")])
+    )
+    files = await list_pr_files("tok", "o", "r", 3)
+    assert files[0].skip_reason is not None
+    assert files[1].skip_reason is None
