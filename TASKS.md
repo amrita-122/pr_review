@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 1**
+**Current phase: 2**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -83,21 +83,21 @@ GitHub App auth (JWT → installation token) · SQLAlchemy 2.0 + Alembic · Back
 Goal: inline comments land on the right lines, and one bad line can never break a review.
 Learn: unified diff format · hunks · RIGHT/LEFT side · GitHub pull request reviews API · Pydantic enums/validators · API pagination
 
-- [ ] 2.1 Fetch changed files: `GET /repos/{owner}/{repo}/pulls/{number}/files` with per_page=100,
+- [x] 2.1 Fetch changed files: `GET /repos/{owner}/{repo}/pulls/{number}/files` with per_page=100,
       follow the `Link` header for more pages. Files without a `patch` (binary / too large) → skipped, with a reason.
-- [ ] 2.2 app/diff/filters.py: skip lockfiles, minified files, generated/vendored folders, binaries,
+- [x] 2.2 app/diff/filters.py: skip lockfiles, minified files, generated/vendored folders, binaries,
       deleted files. Keep the patterns in one list. Unit-test it.
-- [ ] 2.3 app/diff/parse.py (`uv add unidiff`): per file produce (a) the set of commentable new-file
+- [x] 2.3 app/diff/parse.py (`uv add unidiff`): per file produce (a) the set of commentable new-file
       line numbers (added + context lines) and (b) a numbered rendering like `L42 + code` / `L43   code`.
       unidiff expects full diff headers, so add `--- a/path` / `+++ b/path` before the patch text.
-- [ ] 2.4 app/review/schemas.py: `Severity` enum (critical/high/medium/low), `Category` enum
+- [x] 2.4 app/review/schemas.py: `Severity` enum (critical/high/medium/low), `Category` enum
       (injection, secrets, authz, crypto, unsafe_exec, other), `Finding` (file_path, line, severity,
       category, title, rationale, suggestion optional), `ReviewResult` (findings: list[Finding]).
-- [ ] 2.5 app/review/validate.py: keep a finding only if its file was reviewed and its line is
+- [x] 2.5 app/review/validate.py: keep a finding only if its file was reviewed and its line is
       commentable; otherwise drop it and log the reason. Tests include an out-of-diff line.
-- [ ] 2.6 Fake reviewer: regex for `TODO` and `password\s*=` returning Findings. Give it the same
+- [x] 2.6 Fake reviewer: regex for `TODO` and `password\s*=` returning Findings. Give it the same
       signature the LLM reviewer will have: one file's diff → list[Finding].
-- [ ] 2.7 Post ONE review: `POST /repos/{owner}/{repo}/pulls/{number}/reviews` with commit_id = head SHA,
+- [x] 2.7 Post ONE review: `POST /repos/{owner}/{repo}/pulls/{number}/reviews` with commit_id = head SHA,
       event = "COMMENT", a summary body, and comments of {path, line, side: "RIGHT", body}.
       No valid findings → summary only.
 - [ ] 2.8 Save real diffs from sandbox PRs into tests/fixtures/diffs/. They seed your eval set later.
