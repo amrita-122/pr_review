@@ -7,7 +7,7 @@ validates every finding, and posts one review with inline comments.
 The bot only ever comments (`event=COMMENT`). It never approves, requests changes or merges.
 All PR content is treated as untrusted input.
 
-**Status:** Phases 0-2 done (deployed diff engine with a fake reviewer, no AI yet). Phase 3 (first LLM agent) is next.
+**Status:** Phases 0-3 done (deployed security reviewer, an LLM agent in LangGraph). Phase 4 (observability, evals) is next.
 
 ## Phase 0 — Foundations
 
@@ -89,13 +89,56 @@ exactly those two lines; lockfile and image changes were listed as skipped in th
 Known limits: a restart mid-job still loses it (Phase 6); the fake reviewer is regex only; the
 `Link`-header cap means PRs over 3000 files are only partly reviewed.
 
+## Phase 3 — First LLM agent (security)
+
+What works now: on a sandbox PR the deployed app sends each changed file to a Claude model
+(`claude-sonnet-5-5`) through a LangGraph graph, validates the findings and posts ONE review with
+inline comments. The fake reviewer is kept for unit tests only.
+
+- `app/review/prompts/security_v1.md`: the reviewer's instructions (what to report, what not to,
+  severity levels). It tells the model the diff is untrusted data and that instructions inside it
+  must be ignored. Prompts are versioned by file name and never edited in place.
+- `app/review/llm.py`: asks the model for a typed `ReviewResult` (structured output, JSON schema).
+  The diff is wrapped in `<<<UNTRUSTED_DIFF>>>` markers, and a fake end marker inside the diff is
+  stripped. Rate limits, 5xx errors, network errors and timeouts are retried up to 3 times with
+  exponential backoff (tenacity); every call has a 60 s timeout. Unparseable output is retried once,
+  then that file is marked failed.
+- `app/review/graph.py`: `review_diff(files, reviewer, limits)` is the pure core and imports nothing
+  from GitHub. Flow: prepare (limits) -> one `review_file` per file in parallel via `Send`
+  (5 at a time) -> validate. Findings are collected with an append reducer. One failing file never
+  fails the run; it is listed as skipped in the summary.
+- Limits (settings): 30 files per PR and 20,000 characters per file; anything over is skipped with a
+  reason in the summary.
+- Unit tests use fake models and never call a real LLM (an autouse fixture enforces this).
+
+Sandbox results (8 PRs, one issue each): all 5 planted vulnerabilities were caught with a correct
+inline comment on the right line.
+
+| Planted issue | Result |
+|---|---|
+| SQL built with an f-string | critical, `injection`, with the parameterized-query fix |
+| Hardcoded live payment key | critical, `secrets` |
+| Admin route without auth | critical, `authz` |
+| `eval` on user input | critical, `unsafe_exec` |
+| MD5 for passwords | high, `crypto` |
+
+Clean PRs: 3 were run (environment-variable key, price helper, safe parameterized query). All
+returned "No findings". This is a small sample, not a measurement; Phase 4 builds a proper eval set.
+
+Setup notes: set `ANTHROPIC_API_KEY` (a key scoped to a workspace) and `MODEL_REVIEW`. `claude-sonnet-5-5`
+rejects non-default `temperature`, so none is set.
+
+Known limits: results are not yet deterministic (no temperature control); a bad line number from
+the model is dropped by the validator rather than corrected; the untrusted-data defence is a prompt
+rule plus a marker, not yet measured (Phase 5); a restart mid-job still loses it (Phase 6).
+
 ## Architecture
 
 ```
 GitHub PR event
   -> POST /webhooks/github: verify HMAC -> filter event/action -> dedupe delivery id -> 202
   -> background job: installation token -> fetch changed files -> filter -> parse/number lines
-     -> review each file (fake reviewer for now) -> validate -> post ONE review (event=COMMENT)
+     -> review_diff: one LLM call per file (LangGraph) -> validate -> post ONE review (event=COMMENT)
 ```
 
 Details and the planned data model are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
