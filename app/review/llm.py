@@ -55,7 +55,6 @@ def build_chat_model(settings: Settings) -> BaseChatModel:
     return ChatAnthropic(  # type: ignore[call-arg]
         model=settings.model_review,
         api_key=settings.anthropic_api_key,
-        temperature=0,
         timeout=settings.model_timeout_seconds,
         max_retries=0,
     )

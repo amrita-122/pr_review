@@ -120,3 +120,13 @@ def test_prompt_file_loads_and_declares_untrusted_data() -> None:
     prompt = load_prompt()
     assert "untrusted" in prompt.lower()
     assert "<<<UNTRUSTED_DIFF>>>" in prompt
+
+
+def test_chat_model_sets_no_temperature() -> None:
+    # claude-sonnet-5-5 rejects non-default temperature values, which failed every review.
+    from app.config import get_settings
+    from app.review.llm import build_chat_model
+
+    model = build_chat_model(get_settings())
+    assert model.temperature is None  # type: ignore[attr-defined]
+    assert model.max_retries == 0  # type: ignore[attr-defined]
