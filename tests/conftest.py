@@ -19,6 +19,8 @@ def webhook_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("GITHUB_APP_ID", "12345")
     monkeypatch.setenv("GITHUB_PRIVATE_KEY_BASE64", "unused")
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "unused")
+    monkeypatch.setenv("MODEL_REVIEW", "test-model")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
