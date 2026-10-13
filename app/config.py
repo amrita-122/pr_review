@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     github_private_key_base64: SecretStr
     smee_url: str | None = None
     database_url: str
+    anthropic_api_key: SecretStr
+    model_review: str
+    max_files_per_pr: int = 30
+    max_chars_per_file: int = 20000
+    model_timeout_seconds: float = 60.0
 
     @property
     def sqlalchemy_url(self) -> str:

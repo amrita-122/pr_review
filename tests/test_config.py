@@ -39,3 +39,21 @@ def test_settings_load_from_environment(monkeypatch):
     assert "super-secret-webhook" not in settings_repr
     assert "super-secret-private-key" not in settings_repr
     assert "**********" in settings_repr
+
+
+def test_llm_settings_defaults_and_secret(monkeypatch):
+    monkeypatch.setenv("GITHUB_APP_ID", "1")
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "w")
+    monkeypatch.setenv("GITHUB_PRIVATE_KEY_BASE64", "k")
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-very-secret")
+    monkeypatch.setenv("MODEL_REVIEW", "some-model")
+
+    settings = Settings()
+
+    assert settings.model_review == "some-model"
+    assert settings.max_files_per_pr == 30
+    assert settings.max_chars_per_file == 20000
+    assert settings.model_timeout_seconds == 60.0
+    assert settings.anthropic_api_key.get_secret_value() == "sk-ant-very-secret"
+    assert "sk-ant-very-secret" not in repr(settings)

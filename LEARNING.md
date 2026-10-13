@@ -13,10 +13,10 @@
 | Docker + Railway deploy | 1 | Implemented | 4144209, ebfc06a |
 | Unified diffs, hunks, line mapping | 2 | Implemented with help | 36505ec |
 | GitHub reviews API | 2 | Implemented with help | 5fa18ee |
-| Structured output | 3 | Not started | |
-| LangGraph state, reducers, Send | 3 | Not started | |
-| Prompt design + versioning | 3 | Not started | |
-| Retries, backoff, timeouts | 3 | Not started | |
+| Structured output | 3 | Implemented with help | uncommitted, branch feat/phase-3-llm-agent |
+| LangGraph state, reducers, Send | 3 | Implemented with help | uncommitted, branch feat/phase-3-llm-agent |
+| Prompt design + versioning | 3 | Implemented with help | uncommitted, branch feat/phase-3-llm-agent |
+| Retries, backoff, timeouts | 3 | Implemented with help | uncommitted, branch feat/phase-3-llm-agent |
 | Tracing + structured logging | 4 | Not started | |
 | Eval design, precision/recall, eval CI gate | 4 | Not started | |
 | Prompt injection: threat model, red-teaming, defences | 5 | Not started | |
