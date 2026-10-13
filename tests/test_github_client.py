@@ -139,11 +139,11 @@ async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
     from app.jobs import handlers
     from app.review.fake import review_file
 
-    def with_bad_line(path: str, numbered: str) -> list[Finding]:
+    async def with_bad_line(path: str, numbered: str) -> list[Finding]:
         real = review_file(path, numbered)
         return [*real, real[0].model_copy(update={"line": 999})]
 
-    monkeypatch.setattr(handlers, "review_file", with_bad_line)
+    monkeypatch.setattr(handlers, "build_reviewer", lambda: with_bad_line)
     event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
     reviews = _mock_pipeline(event).mock(return_value=httpx.Response(200, json={}))
     await process_pull_request(event)

@@ -9,6 +9,8 @@ from app.config import get_settings
 from app.db.models import Base
 from app.github.webhooks import PullRequestEvent
 from app.main import app, get_db
+from app.review.fake import review_file
+from app.review.schemas import Finding
 
 TEST_SECRET = "test-webhook-secret"  # noqa: S105
 
@@ -55,3 +57,13 @@ def processed(monkeypatch: pytest.MonkeyPatch) -> list[PullRequestEvent]:
 
     monkeypatch.setattr("app.main.process_pull_request", fake)
     return calls
+
+
+@pytest.fixture(autouse=True)
+def fake_reviewer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests must never call a real LLM: use the regex fake behind the async interface."""
+
+    async def reviewer(path: str, numbered: str) -> list[Finding]:
+        return review_file(path, numbered)
+
+    monkeypatch.setattr("app.jobs.handlers.build_reviewer", lambda: reviewer)
