@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 3**
+**Current phase: 3 (done; README section pending)**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -125,7 +125,7 @@ nodes, edges, reducers, `Send` fan-out · retries with backoff · timeouts
       a timeout on every model call, one failing file never fails the whole run.
 - [x] 3.7 Swap the background job from the fake reviewer to the graph. Keep the fake reviewer for tests.
 - [x] 3.8 Unit-test the graph with a fake chat model that returns a fixed ReviewResult.
-- [ ] 3.9 Sandbox: add a small vulnerable app and open PRs that each introduce one issue
+- [x] 3.9 Sandbox: add a small vulnerable app and open PRs that each introduce one issue
       (SQL built with f-strings, hardcoded API key, admin route without an auth check, `eval` on user
       input, weak hashing for passwords) plus a few clean PRs.
 **Done when:** the SQL-injection PR gets a correct inline comment; 5 clean PRs show no nonsense findings.
