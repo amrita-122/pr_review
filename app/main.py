@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from pydantic import ValidationError
@@ -14,8 +15,16 @@ from app.github.webhooks import (
     verify_signature,
 )
 from app.jobs.handlers import process_pull_request
+from app.observability import configure_tracing
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    configure_tracing(get_settings())
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 def get_db() -> Iterator[Session]:
