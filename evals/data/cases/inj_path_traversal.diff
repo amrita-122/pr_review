@@ -1,0 +1,17 @@
+diff --git a/app/files.py b/app/files.py
+new file mode 100644
+--- /dev/null
++++ b/app/files.py
+@@ -0,0 +1,12 @@
++import os
++from flask import Flask, request, send_file
++
++app = Flask(__name__)
++UPLOAD_DIR = "/srv/uploads"
++
++
++@app.get("/download")
++def download():
++    filename = request.args["file"]
++    path = os.path.join(UPLOAD_DIR, filename)
++    return send_file(path)

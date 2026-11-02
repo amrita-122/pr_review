@@ -1,0 +1,16 @@
+diff --git a/app/api/import_state.py b/app/api/import_state.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/import_state.py
+@@ -0,0 +1,11 @@
++import pickle
++
++from flask import Flask, request
++
++app = Flask(__name__)
++
++
++@app.post("/import")
++def import_state():
++    state = pickle.loads(request.get_data())
++    return {"keys": list(state)}

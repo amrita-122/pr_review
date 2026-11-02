@@ -1,0 +1,10 @@
+diff --git a/app/config_loader.py b/app/config_loader.py
+new file mode 100644
+--- /dev/null
++++ b/app/config_loader.py
+@@ -0,0 +1,5 @@
++import yaml
++
++
++def load_user_config(text: str) -> dict:
++    return yaml.safe_load(text) or {}

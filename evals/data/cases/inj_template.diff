@@ -1,0 +1,14 @@
+diff --git a/app/views.py b/app/views.py
+new file mode 100644
+--- /dev/null
++++ b/app/views.py
+@@ -0,0 +1,9 @@
++from flask import Flask, render_template_string, request
++
++app = Flask(__name__)
++
++
++@app.get("/hello")
++def hello():
++    name = request.args.get("name", "world")
++    return render_template_string("<h1>Hello " + name + "</h1>")

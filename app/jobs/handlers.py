@@ -19,9 +19,7 @@ from app.review.cost import Prices, Usage, estimate_cost, usage_from_metadata
 from app.review.graph import ReviewLimits, review_diff
 from app.review.llm import (
     Reviewer,
-    build_chat_model,
-    load_prompt,
-    make_reviewer,
+    build_default_reviewer,
 )
 from app.review.render import render_comment, render_summary
 
@@ -29,13 +27,8 @@ logger = structlog.get_logger()
 
 
 def build_reviewer() -> Reviewer:
-    """The one place the real model is created. Tests replace this with a fake."""
-    settings = get_settings()
-    return make_reviewer(
-        build_chat_model(settings),
-        prompt=load_prompt(settings.prompt_version),
-        timeout_seconds=settings.model_timeout_seconds,
-    )
+    """The one place the job creates the real model. Tests replace this with a fake."""
+    return build_default_reviewer(get_settings())
 
 
 def _record(action: str, fn: Callable[[Session], None]) -> None:

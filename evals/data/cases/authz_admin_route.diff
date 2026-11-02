@@ -1,0 +1,14 @@
+diff --git a/app/api/admin.py b/app/api/admin.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/admin.py
+@@ -0,0 +1,9 @@
++from fastapi import APIRouter
++
++router = APIRouter()
++
++
++@router.delete("/admin/users/{user_id}")
++def delete_user(user_id: int):
++    USERS.pop(user_id, None)
++    return {"deleted": user_id}

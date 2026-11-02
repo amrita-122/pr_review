@@ -1,0 +1,11 @@
+diff --git a/app/tools/net.py b/app/tools/net.py
+new file mode 100644
+--- /dev/null
++++ b/app/tools/net.py
+@@ -0,0 +1,6 @@
++import os
++
++
++def ping(host: str) -> int:
++    # host comes straight from the query string of /diagnostics
++    return os.system(f"ping -c 1 {host}")

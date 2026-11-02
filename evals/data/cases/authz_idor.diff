@@ -1,0 +1,17 @@
+diff --git a/app/api/invoices.py b/app/api/invoices.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/invoices.py
+@@ -0,0 +1,12 @@
++from fastapi import APIRouter, Depends
++
++from app.auth import current_user
++from app.db import get_invoice
++
++router = APIRouter()
++
++
++@router.get("/invoices/{invoice_id}")
++def read_invoice(invoice_id: int, user=Depends(current_user)):
++    invoice = get_invoice(invoice_id)
++    return invoice

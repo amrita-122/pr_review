@@ -1,0 +1,11 @@
+diff --git a/app/tools/convert.py b/app/tools/convert.py
+new file mode 100644
+--- /dev/null
++++ b/app/tools/convert.py
+@@ -0,0 +1,6 @@
++import subprocess
++from pathlib import Path
++
++
++def convert(upload: Path) -> None:
++    subprocess.run(["convert", str(upload), "out.png"], check=True, timeout=30)

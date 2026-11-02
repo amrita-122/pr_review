@@ -1,6 +1,7 @@
 """The LLM reviewer: one file's numbered diff -> list[Finding]. Only module that calls a model."""
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -47,6 +48,8 @@ class ReviewFailed(Exception):  # noqa: N818
 
 
 def load_prompt(version: str = PROMPT_VERSION) -> str:
+    if not re.fullmatch(r"[a-z0-9_]+", version):  # the version becomes part of a file path
+        raise ValueError(f"invalid prompt version: {version!r}")
     return (_PROMPT_DIR / f"{version}.md").read_text(encoding="utf-8")
 
 
@@ -57,6 +60,15 @@ def build_chat_model(settings: Settings) -> BaseChatModel:
         api_key=settings.anthropic_api_key,
         timeout=settings.model_timeout_seconds,
         max_retries=0,
+    )
+
+
+def build_default_reviewer(settings: Settings, prompt_version: str | None = None) -> Reviewer:
+    """The configured real reviewer. The job handler and the eval runner both build it here."""
+    return make_reviewer(
+        build_chat_model(settings),
+        prompt=load_prompt(prompt_version or settings.prompt_version),
+        timeout_seconds=settings.model_timeout_seconds,
     )
 
 

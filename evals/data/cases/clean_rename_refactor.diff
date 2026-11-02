@@ -1,0 +1,10 @@
+diff --git a/app/utils/text.py b/app/utils/text.py
+--- a/app/utils/text.py
++++ b/app/utils/text.py
+@@ -1,4 +1,4 @@
+ import re
+ 
+-def clean(s):
+-    return re.sub(r"\s+", " ", s).strip()
++def normalize_whitespace(text: str) -> str:
++    return re.sub(r"\s+", " ", text).strip()

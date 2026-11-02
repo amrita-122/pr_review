@@ -1,0 +1,12 @@
+diff --git a/app/search/query.py b/app/search/query.py
+new file mode 100644
+--- /dev/null
++++ b/app/search/query.py
+@@ -0,0 +1,7 @@
++def _name_filter(name: str) -> str:
++    return "name = '" + name + "'"
++
++
++def search(conn, name: str):
++    sql = "SELECT id, name FROM products WHERE " + _name_filter(name)
++    return conn.execute(sql).fetchall()
