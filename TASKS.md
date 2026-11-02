@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 3 (done; README section pending)**
+**Current phase: 4**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains

@@ -7,7 +7,7 @@ validates every finding, and posts one review with inline comments.
 The bot only ever comments (`event=COMMENT`). It never approves, requests changes or merges.
 All PR content is treated as untrusted input.
 
-**Status:** Phases 0-2 done (deployed diff engine with a fake reviewer, no AI yet). Phase 3 (first LLM agent) is next.
+**Status:** Phases 0-3 done (deployed, with an LLM security reviewer in a LangGraph). Phase 4 (observability, evals, eval CI gate) is next.
 
 ## Phase 0 — Foundations
 
@@ -89,13 +89,42 @@ exactly those two lines; lockfile and image changes were listed as skipped in th
 Known limits: a restart mid-job still loses it (Phase 6); the fake reviewer is regex only; the
 `Link`-header cap means PRs over 3000 files are only partly reviewed.
 
+## Phase 3 — First LLM agent (security)
+
+What works now: the background job runs a LangGraph security reviewer (Anthropic chat model)
+instead of the fake reviewer. The fake reviewer is kept for tests.
+
+- `app/review/prompts/security_v1.md`: the reviewer prompt (versioned by file name, never edited
+  in place). It says what to look for, what not to report, the severity definitions, and that the
+  diff between the markers is untrusted data.
+- `app/review/llm.py`: `make_reviewer` wraps a chat model with `with_structured_output(ReviewResult)`.
+  Input is one file's numbered diff plus its path, wrapped in `<<<UNTRUSTED_DIFF>>>` markers (a
+  closing marker inside the diff is stripped so it can't end the block early). Output that doesn't
+  parse is retried once, then that file is marked failed.
+- Reliability: tenacity retries rate limits, 5xx, network errors and timeouts with exponential
+  backoff (max 3 attempts); every model call has a timeout (`MODEL_TIMEOUT_SECONDS`, default 60s).
+  The SDK's own retries are off so tenacity is the only place that decides.
+- `app/review/graph.py`: `prepare` (apply limits) -> one `review_file` per file via `Send`
+  (parallel, at most 5 at once) -> `validate` -> END. State uses append reducers for findings and
+  errors. `review_diff(files, reviewer, limits)` has no GitHub imports, so evals can call it directly.
+- Limits: `MAX_FILES_PER_PR` (default 30) and `MAX_CHARS_PER_FILE` (default 20000). Files over a
+  limit, and files whose review failed, are skipped and listed in the review summary. One failing
+  file never fails the run.
+- Unit tests use a fake chat model that returns a fixed `ReviewResult`; no test calls a real LLM.
+- Sandbox: a small vulnerable app and PRs that each introduce one issue (SQL built with f-strings,
+  hardcoded API key, admin route without auth, `eval` on user input, weak password hashing), plus clean PRs.
+
+Known limits: no precision/recall numbers yet (Phase 4); a restart mid-job still loses it (Phase 6);
+the diff is untrusted input and prompt-injection hardening is measured in Phase 5.
+
 ## Architecture
 
 ```
 GitHub PR event
   -> POST /webhooks/github: verify HMAC -> filter event/action -> dedupe delivery id -> 202
   -> background job: installation token -> fetch changed files -> filter -> parse/number lines
-     -> review each file (fake reviewer for now) -> validate -> post ONE review (event=COMMENT)
+     -> review_diff (LangGraph: limits -> parallel per-file LLM review) -> validate
+     -> post ONE review (event=COMMENT)
 ```
 
 Details and the planned data model are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
