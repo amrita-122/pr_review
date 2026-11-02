@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db.models import Base
 from app.github.webhooks import PullRequestEvent
 from app.main import app, get_db
@@ -23,13 +23,15 @@ def webhook_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "unused")
     monkeypatch.setenv("MODEL_REVIEW", "test-model")
+    # Never read the developer's real .env in unit tests.
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
-def db_session() -> Iterator[Session]:
+def db_session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
     """In-memory SQLite stands in for Postgres in unit tests."""
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -42,6 +44,7 @@ def db_session() -> Iterator[Session]:
             yield session
 
     app.dependency_overrides[get_db] = override
+    monkeypatch.setattr("app.jobs.handlers.get_session", factory)  # run records -> test DB
     with factory() as session:
         yield session
     app.dependency_overrides.clear()

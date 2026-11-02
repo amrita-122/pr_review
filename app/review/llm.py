@@ -1,11 +1,11 @@
 """The LLM reviewer: one file's numbered diff -> list[Finding]. Only module that calls a model."""
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import anthropic
+import structlog
 from langchain_anthropic import ChatAnthropic
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -22,7 +22,7 @@ from tenacity.wait import wait_base
 from app.config import Settings
 from app.review.schemas import Finding, ReviewResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 PROMPT_VERSION = "security_v1"
 _PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -103,7 +103,10 @@ def make_reviewer(
                 return (await call_once(messages)).findings
             except (*_BAD_OUTPUT, ReviewFailed) as exc:
                 logger.warning(
-                    "bad model output for %r (attempt %d): %s", path, output_attempt, exc
+                    "bad_model_output",
+                    file=path,
+                    attempt=output_attempt,
+                    error=type(exc).__name__,
                 )
         raise ReviewFailed("model output could not be parsed after 2 attempts")
 

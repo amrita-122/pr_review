@@ -1,6 +1,4 @@
-import logging
-
-import pytest
+import structlog.testing
 
 from app.diff.parse import ParsedFile, parse_patch
 from app.review.graph import ReviewLimits, review_diff
@@ -58,16 +56,18 @@ async def test_one_failing_file_does_not_fail_the_run() -> None:
     assert outcome.skipped == [("bad.py", "review failed")]
 
 
-async def test_invalid_line_is_dropped_by_the_validator(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+async def test_invalid_line_is_dropped_by_the_validator() -> None:
     async def reviewer(path: str, numbered: str) -> list[Finding]:
         return [_finding(path, line=2), _finding(path, line=99)]
 
-    with caplog.at_level(logging.WARNING):
+    with structlog.testing.capture_logs() as logs:
         outcome = await review_diff(_files("a.py"), reviewer, LIMITS)
     assert [f.line for f in outcome.findings] == [2]
-    assert "line not commentable" in caplog.text
+    assert outcome.raw_count == 2
+    assert [(f.line, reason) for f, reason in outcome.dropped] == [(99, "line not commentable")]
+    assert [e["reason"] for e in logs if e["event"] == "finding_dropped"] == [
+        "line not commentable"
+    ]
 
 
 async def test_file_and_size_limits_skip_with_reason() -> None:

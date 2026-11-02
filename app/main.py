@@ -15,11 +15,13 @@ from app.github.webhooks import (
     verify_signature,
 )
 from app.jobs.handlers import process_pull_request
+from app.logging import configure_logging
 from app.observability import configure_tracing
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
     configure_tracing(get_settings())
     yield
 

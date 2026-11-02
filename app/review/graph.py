@@ -1,11 +1,11 @@
 """The review graph. Pure core: files in, validated findings out. No GitHub or HTTP imports."""
 
-import logging
 import operator
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Annotated, Any, TypedDict
 
+import structlog
 from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -13,9 +13,9 @@ from langgraph.types import Send
 from app.diff.parse import ParsedFile
 from app.review.llm import Reviewer
 from app.review.schemas import Finding
-from app.review.validate import validate_findings
+from app.review.validate import Dropped, partition_findings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 MAX_CONCURRENT_FILES = 5  # parallel model calls; keeps us under provider rate limits
 
@@ -31,6 +31,8 @@ class ReviewOutcome:
     findings: list[Finding]  # validated: safe to post
     reviewed: dict[str, ParsedFile]  # files the model actually reviewed
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
+    dropped: list[Dropped] = field(default_factory=list)  # validator drops, with reason
+    raw_count: int = 0  # findings the model produced, before validation
 
 
 class ReviewState(TypedDict):
@@ -40,6 +42,7 @@ class ReviewState(TypedDict):
     findings: Annotated[list[Finding], operator.add]  # reducer: parallel branches append
     errors: Annotated[list[tuple[str, str]], operator.add]  # (path, reason) for failed files
     validated: list[Finding]
+    dropped: list[Dropped]
 
 
 class FileTask(TypedDict):
@@ -78,7 +81,7 @@ def _review_file(reviewer: Reviewer) -> Any:  # node callable; takes a FileTask,
         try:
             findings = await reviewer(task["path"], task["numbered"])
         except Exception as exc:  # one bad file must never fail the whole run
-            logger.warning("review failed for %r: %s: %s", task["path"], type(exc).__name__, exc)
+            logger.warning("file_review_failed", file=task["path"], error=type(exc).__name__)
             return {"errors": [(task["path"], "review failed")]}
         return {"findings": findings}
 
@@ -86,7 +89,8 @@ def _review_file(reviewer: Reviewer) -> Any:  # node callable; takes a FileTask,
 
 
 def _validate(state: ReviewState) -> dict[str, Any]:
-    return {"validated": validate_findings(state["findings"], state["to_review"])}
+    kept, dropped = partition_findings(state["findings"], state["to_review"])
+    return {"validated": kept, "dropped": dropped}
 
 
 def build_graph(reviewer: Reviewer, limits: ReviewLimits) -> Any:
@@ -122,6 +126,7 @@ async def review_diff(
         "findings": [],
         "errors": [],
         "validated": [],
+        "dropped": [],
     }
     config: dict[str, Any] = {"max_concurrency": MAX_CONCURRENT_FILES}
     if run_name:
@@ -137,4 +142,6 @@ async def review_diff(
         findings=final["validated"],
         reviewed=reviewed,
         skipped=final["limit_skipped"] + final["errors"],
+        dropped=final["dropped"],
+        raw_count=len(final["findings"]),
     )

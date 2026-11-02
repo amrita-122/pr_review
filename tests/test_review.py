@@ -1,6 +1,5 @@
-import logging
-
 import pytest
+import structlog.testing
 from pydantic import ValidationError
 
 from app.diff.parse import parse_patch
@@ -42,13 +41,24 @@ def test_fake_reviewer_ignores_context_and_removed_lines() -> None:
     assert review_file("a.py", parsed.numbered) == []
 
 
-def test_validator_drops_out_of_diff_line_and_unreviewed_file(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_validator_drops_out_of_diff_line_and_unreviewed_file() -> None:
     reviewed = {"a.py": parse_patch("a.py", PATCH)}
     good, bad_line, bad_file = _finding(line=2), _finding(line=99), _finding(path="b.py")
-    with caplog.at_level(logging.WARNING):
+    with structlog.testing.capture_logs() as logs:
         kept = validate_findings([good, bad_line, bad_file], reviewed)
     assert kept == [good]
-    assert "line not commentable" in caplog.text
-    assert "file not reviewed" in caplog.text
+    assert {e["reason"] for e in logs} == {"line not commentable", "file not reviewed"}
+
+
+def test_bound_run_id_appears_on_validator_logs() -> None:
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(run_id="abc123")
+    try:
+        with structlog.testing.capture_logs(
+            processors=[structlog.contextvars.merge_contextvars]
+        ) as logs:
+            validate_findings([_finding(line=99)], {"a.py": parse_patch("a.py", PATCH)})
+    finally:
+        structlog.contextvars.clear_contextvars()
+    assert logs[0]["event"] == "finding_dropped"
+    assert logs[0]["run_id"] == "abc123"
