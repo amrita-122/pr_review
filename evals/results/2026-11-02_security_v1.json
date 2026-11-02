@@ -1,0 +1,1001 @@
+{
+  "prompt_version": "security_v1",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-02T21:54:10+00:00",
+  "cases": 31,
+  "summary": {
+    "precision": {
+      "mean": 0.7574786324786325,
+      "min": 0.7307692307692307,
+      "max": 0.7916666666666666
+    },
+    "recall": {
+      "mean": 0.9333333333333332,
+      "min": 0.9,
+      "max": 0.95
+    },
+    "errors": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "invalid_line_rate": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    }
+  },
+  "runs": [
+    {
+      "cases": 31,
+      "errors": 0,
+      "precision": 0.7307692307692307,
+      "recall": 0.95,
+      "true_positives": 19,
+      "false_negatives": 1,
+      "false_positives": 7,
+      "duplicates": 0,
+      "wrong_category": 4,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 4,
+          "precision": 0.42857142857142855,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.75,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 6,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.75,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 3,
+          "fn": 1,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 0.75
+        }
+      },
+      "clean_cases": 11,
+      "clean_cases_with_fp": 1,
+      "clean_false_positives": 1,
+      "invalid_line_rate": 0.0,
+      "cost_usd_total": "0.166226",
+      "cost_usd_per_case": "0.005362129032258064516129032258",
+      "tokens_in": 55523,
+      "tokens_out": 5518,
+      "latency_p50_s": 2.406962000000931,
+      "latency_p95_s": 4.215713500001584
+    },
+    {
+      "cases": 31,
+      "errors": 0,
+      "precision": 0.7916666666666666,
+      "recall": 0.95,
+      "true_positives": 19,
+      "false_negatives": 1,
+      "false_positives": 5,
+      "duplicates": 0,
+      "wrong_category": 2,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.6,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.75,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 6,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.75,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 3,
+          "fn": 1,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 0.75
+        }
+      },
+      "clean_cases": 11,
+      "clean_cases_with_fp": 1,
+      "clean_false_positives": 1,
+      "invalid_line_rate": 0.0,
+      "cost_usd_total": "0.164486",
+      "cost_usd_per_case": "0.005306",
+      "tokens_in": 55523,
+      "tokens_out": 5344,
+      "latency_p50_s": 2.2292287000018405,
+      "latency_p95_s": 3.2302750999988348
+    },
+    {
+      "cases": 31,
+      "errors": 0,
+      "precision": 0.75,
+      "recall": 0.9,
+      "true_positives": 18,
+      "false_negatives": 2,
+      "false_positives": 6,
+      "duplicates": 0,
+      "wrong_category": 3,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.6,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.75,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 6,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.75,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 0,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.0,
+          "recall": 0.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 3,
+          "fn": 1,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 0.75
+        }
+      },
+      "clean_cases": 11,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.0,
+      "cost_usd_total": "0.165986",
+      "cost_usd_per_case": "0.005354387096774193548387096774",
+      "tokens_in": 55523,
+      "tokens_out": 5494,
+      "latency_p50_s": 2.231297500002256,
+      "latency_p95_s": 3.2308025999991514
+    }
+  ],
+  "details": [
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 11,
+            "category": "authz",
+            "title": "Unauthenticated user lookup returns all columns"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 9,
+            "category": "crypto",
+            "title": "Non-constant-time hash comparison"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "Unvalidated account value interpolated into URL path"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "authz",
+            "title": "Import endpoint has no authentication or authorization"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [
+          "unsafe_exec"
+        ],
+        "false_positives": [
+          {
+            "line": 5,
+            "category": "injection",
+            "title": "Command injection via shell=True with upload filename"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "authz",
+            "title": "Download endpoint has no authentication or authorization"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "authz",
+            "title": "User lookup endpoint has no authentication or authorization"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "authz",
+            "title": "Unauthenticated user lookup endpoint returns full user rows"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 9,
+            "category": "crypto",
+            "title": "Non-constant-time hash comparison"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "Unvalidated account value interpolated into URL path"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [
+          "unsafe_exec"
+        ],
+        "false_positives": [
+          {
+            "line": 5,
+            "category": "injection",
+            "title": "Command injection via shell=True with upload filename"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "authz",
+            "title": "User lookup endpoint has no authentication or authorization"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 9,
+            "category": "crypto",
+            "title": "Non-constant-time hash comparison"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "Unvalidated account value interpolated into URL path"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [
+          "unsafe_exec"
+        ],
+        "false_positives": [
+          {
+            "line": 5,
+            "category": "injection",
+            "title": "Command injection via shell=True with upload filename"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "authz",
+            "title": "User lookup endpoint has no authentication or authorization"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [
+          "other"
+        ],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "authz",
+            "title": "Overly permissive CORS: wildcard origin with credentials enabled"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "other",
+            "title": "JWT issued without expiration claim"
+          }
+        ],
+        "wrong_category": 0
+      }
+    ]
+  ],
+  "total_cost_usd": "0.496698"
+}

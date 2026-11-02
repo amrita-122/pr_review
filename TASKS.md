@@ -137,23 +137,26 @@ Learn: tracing · structured logging · golden datasets · precision / recall ·
 
 - [x] 4.1 LangSmith: set the env vars; tag each run with repo, PR, head SHA, prompt version, model.
       Follow one review end to end in the trace UI.
-- [ ] 4.2 `uv add structlog`: JSON logs, run_id bound on every log line.
-- [ ] 4.3 Tables `review_runs` (repo, pr_number, head_sha, status, prompt_version, model, started_at,
+- [x] 4.2 `uv add structlog`: JSON logs, run_id bound on every log line.
+- [x] 4.3 Tables `review_runs` (repo, pr_number, head_sha, status, prompt_version, model, started_at,
       finished_at, tokens_in, tokens_out, cost_usd, error) and `findings` (run_id, file, line, severity,
       category, title, posted, drop_reason). Migration. Cost = token usage × a price table in settings.
-- [ ] 4.4 Golden set in evals/data/: ~30 cases, each a saved diff + expected findings in expected.jsonl
+- [x] 4.4 Golden set in evals/data/: ~30 cases, each a saved diff + expected findings in expected.jsonl
       (`case_id, file, line_start, line_end, category`). About 20 with planted bugs across categories
       (some subtle) and about 10 clean. Write the expectations BEFORE running the model on them.
-- [ ] 4.5 evals/run.py: call `review_diff` on each case (no GitHub). A finding matches when file and
+- [x] 4.5 evals/run.py: call `review_diff` on each case (no GitHub). A finding matches when file and
       category are equal and the line is within the expected range ±3. Report precision, recall per
       category, false positives on clean cases, invalid-line rate (validator drops), cost per case,
       p50/p95 latency. Save JSON to evals/results/<date>_<prompt_version>.json and print a table.
-- [ ] 4.6 Run it 3 times to see the variance. Use temperature 0 where supported. Put the baseline in README.
-- [ ] 4.7 Write security_v2.md, re-run, compare with v1. Keep whichever wins.
-- [ ] 4.8 evals/thresholds.json (minimum precision and recall, with tolerance for variance).
+- [x] 4.6 Run it 3 times to see the variance. Use temperature 0 where supported. Put the baseline in README.
+- [x] 4.7 Write security_v2.md, re-run, compare with v1. Keep whichever wins.
+- [x] 4.8 evals/thresholds.json (minimum precision and recall, with tolerance for variance).
       .github/workflows/evals.yml (Claude Code may scaffold): runs only on PRs touching
       app/review/** or evals/**; API key from a repository secret; fails if any metric is under its threshold.
 **Done when:** README shows baseline numbers, and a PR with a deliberately worse prompt is blocked by the eval workflow.
+Status: baseline and v2 numbers are in README; the gate fails locally on the v1 prompt (`--check` exits 1).
+Still to do for the CI proof: add the `ANTHROPIC_API_KEY` repo secret, push the branch, and open a draft
+PR that swaps in a worse prompt to see `Evals` go red (then close it). Move "Current phase" to 5 after that.
 
 ---
 ## Phase 5 — Prompt-injection hardening (the differentiator)

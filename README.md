@@ -7,7 +7,7 @@ validates every finding, and posts one review with inline comments.
 The bot only ever comments (`event=COMMENT`). It never approves, requests changes or merges.
 All PR content is treated as untrusted input.
 
-**Status:** Phases 0-3 done (deployed, with an LLM security reviewer in a LangGraph). Phase 4 (observability, evals, eval CI gate) is next.
+**Status:** Phases 0-4 done (deployed LLM security reviewer, structured logs, per-run records, golden-set evals and an eval CI gate). Phase 5 (prompt-injection hardening) is next.
 
 ## Phase 0 — Foundations
 
@@ -117,6 +117,48 @@ instead of the fake reviewer. The fake reviewer is kept for tests.
 Known limits: no precision/recall numbers yet (Phase 4); a restart mid-job still loses it (Phase 6);
 the diff is untrusted input and prompt-injection hardening is measured in Phase 5.
 
+## Phase 4 — Observability, evals, eval CI gate
+
+What works now: every review has a `run_id`, a database record with tokens and estimated cost,
+JSON logs, a LangSmith trace, and a number for how good the reviewer is.
+
+- **Logs**: `structlog` writes one JSON object per line (`app/logging.py`). The job binds `run_id`,
+  repo, PR number and head SHA once, and every log line from the graph, reviewer and validator
+  carries them. Diffs, model output and tokens are never logged.
+- **Tracing**: LangSmith traces carry repo, PR, head SHA, prompt version, model and `run_id`.
+- **Records**: `review_runs` (status, prompt version, model, tokens, estimated cost, error) and
+  `findings` (every finding, `posted` or dropped with `drop_reason`). Writing them can fail without
+  affecting the review. Cost = tokens x `PRICE_INPUT_PER_MTOK` / `PRICE_OUTPUT_PER_MTOK`.
+- **Golden set**: 31 cases in `evals/data/` (20 planted bugs across injection, secrets, authz, crypto,
+  unsafe_exec and other; 11 clean, including hard negatives). See [ADR 0003](docs/decisions/0003-eval-methodology.md).
+- **Run it**: `uv run python -m evals.run --runs 3` (add `--prompt-version security_v1`,
+  `--case <id>`, `--max-cost 3`, `--check`). Results are saved in `evals/results/`.
+- **Gate**: `.github/workflows/evals.yml` runs on PRs touching `app/review/**` or `evals/**` and fails
+  when mean precision or recall drops under `evals/thresholds.json` (0.85 / 0.85) or any case errors.
+  It needs an `ANTHROPIC_API_KEY` repository secret.
+
+Results (3 runs each, `claude-sonnet-5-5`, 31 cases, about $0.55 per 3 runs):
+
+| Prompt | Precision (mean, min-max) | Recall (mean, min-max) | Clean cases with a false positive | Cost per case |
+|---|---|---|---|---|
+| `security_v1` | 75.7% (73.1-79.2) | 93.3% (90.0-95.0) | 1, 1, 0 of 11 | $0.0054 |
+| `security_v2` | 100% (100-100) | 100% (100-100) | 0, 0, 0 of 11 | $0.0059 |
+
+Latency per case: p50 about 2 s, p95 about 3 s. Invalid-line rate: 0% for both prompts.
+
+What changed in v2 and why: v1 reported "no authentication" on any route, reported hardening nits
+(constant-time comparison, token expiry), and labelled `shell=True` as injection. v2 limits the
+authz rule to sensitive actions, lists what not to report, and fixes the category for each kind of
+finding.
+
+Honest caveats: v2 was written after reading v1's failures on this same set, so its 100% is
+optimistic and the set can no longer show further improvement. 20 bugs is small (one miss is 5
+points of recall). The matching rule depends on the label scheme: v1's remaining recall misses were
+mostly the model choosing a different category than the label. Next step is more and harder cases.
+
+Known limits: the diff is untrusted and injection resistance is not measured yet (Phase 5); a restart
+mid-job still loses it (Phase 6); run records are not unique per head SHA yet (Phase 6).
+
 ## Architecture
 
 ```
@@ -131,7 +173,7 @@ Details and the planned data model are in [docs/ARCHITECTURE.md](docs/ARCHITECTU
 
 ## Eval results
 
-Coming with Phase 4.
+See the Phase 4 section above for the current baseline and how to run it.
 
 ## Limitations
 
