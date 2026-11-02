@@ -135,7 +135,7 @@ nodes, edges, reducers, `Send` fan-out · retries with backoff · timeouts
 Goal: know how good the reviewer is in numbers, and automatically block changes that make it worse.
 Learn: tracing · structured logging · golden datasets · precision / recall · LLM eval pitfalls (non-determinism, small samples)
 
-- [ ] 4.1 LangSmith: set the env vars; tag each run with repo, PR, head SHA, prompt version, model.
+- [x] 4.1 LangSmith: set the env vars; tag each run with repo, PR, head SHA, prompt version, model.
       Follow one review end to end in the trace UI.
 - [ ] 4.2 `uv add structlog`: JSON logs, run_id bound on every log line.
 - [ ] 4.3 Tables `review_runs` (repo, pr_number, head_sha, status, prompt_version, model, started_at,
