@@ -9,7 +9,13 @@ from app.github.auth import get_installation_token
 from app.github.client import ReviewComment, list_pr_files, post_review
 from app.github.webhooks import PullRequestEvent
 from app.review.graph import ReviewLimits, review_diff
-from app.review.llm import Reviewer, build_chat_model, load_prompt, make_reviewer
+from app.review.llm import (
+    PROMPT_VERSION,
+    Reviewer,
+    build_chat_model,
+    load_prompt,
+    make_reviewer,
+)
 from app.review.render import render_comment, render_summary
 
 logger = logging.getLogger(__name__)
@@ -47,7 +53,19 @@ async def process_pull_request(event: PullRequestEvent) -> None:
         settings = get_settings()
         reviewer = build_reviewer()
         limits = ReviewLimits(settings.max_files_per_pr, settings.max_chars_per_file)
-        outcome = await review_diff(parsed_files, reviewer, limits)
+        outcome = await review_diff(
+            parsed_files,
+            reviewer,
+            limits,
+            run_name=f"review {event.owner}/{event.repo}#{event.number}",
+            metadata={
+                "repo": f"{event.owner}/{event.repo}",
+                "pr_number": str(event.number),
+                "head_sha": event.head_sha,
+                "prompt_version": PROMPT_VERSION,
+                "model": settings.model_review,
+            },
+        )
 
         valid = outcome.findings
         skipped += outcome.skipped

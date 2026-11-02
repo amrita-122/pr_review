@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Annotated, Any, TypedDict
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
@@ -101,9 +102,18 @@ def build_graph(reviewer: Reviewer, limits: ReviewLimits) -> Any:
 
 
 async def review_diff(
-    files: Mapping[str, ParsedFile], reviewer: Reviewer, limits: ReviewLimits
+    files: Mapping[str, ParsedFile],
+    reviewer: Reviewer,
+    limits: ReviewLimits,
+    *,
+    run_name: str | None = None,
+    metadata: Mapping[str, str] | None = None,
+    callbacks: list[BaseCallbackHandler] | None = None,
 ) -> ReviewOutcome:
-    """Review parsed files. Evals call this directly; it knows nothing about GitHub."""
+    """Review parsed files. Evals call this directly; it knows nothing about GitHub.
+
+    run_name / metadata / callbacks only label and observe the run (tracing, token counting).
+    """
     app = build_graph(reviewer, limits)
     initial: ReviewState = {
         "files": dict(files),
@@ -113,7 +123,14 @@ async def review_diff(
         "errors": [],
         "validated": [],
     }
-    final = await app.ainvoke(initial, config={"max_concurrency": MAX_CONCURRENT_FILES})
+    config: dict[str, Any] = {"max_concurrency": MAX_CONCURRENT_FILES}
+    if run_name:
+        config["run_name"] = run_name
+    if metadata:
+        config["metadata"] = dict(metadata)
+    if callbacks:
+        config["callbacks"] = callbacks
+    final = await app.ainvoke(initial, config=config)
     failed = {path for path, _ in final["errors"]}
     reviewed = {p: f for p, f in final["to_review"].items() if p not in failed}
     return ReviewOutcome(
