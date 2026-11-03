@@ -12,16 +12,14 @@ from langgraph.types import Send
 
 from app.config import Settings
 from app.diff.parse import ParsedFile
+from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
 from app.review.llm import Reviewer
-from app.review.schemas import Agent, Finding, ReviewFinding, Severity
+from app.review.schemas import Agent, Finding, ReviewFinding
 from app.review.validate import Dropped, partition_findings
 
 logger = structlog.get_logger()
 
 MAX_CONCURRENT_FILES = 5  # parallel model calls; keeps us under provider rate limits
-
-
-_SEVERITY_RANK = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.LOW: 3}
 
 
 @dataclass(frozen=True)
@@ -125,7 +123,7 @@ def _review_file(
                 produced=len(findings),
                 kept=limits.max_findings_per_file,
             )
-            findings = sorted(findings, key=lambda f: _SEVERITY_RANK[f.severity])[
+            findings = sorted(findings, key=lambda f: SEVERITY_RANK[f.severity])[
                 : limits.max_findings_per_file
             ]
         # The agent comes from OUR node, never from the model's output.
@@ -138,12 +136,14 @@ def _review_file(
 def _validate(limits: ReviewLimits) -> Any:
     def validate(state: ReviewState) -> dict[str, Any]:
         kept, dropped = partition_findings(state["findings"], state["to_review"])
-        if len(kept) > limits.max_comments:
-            ranked = sorted(kept, key=lambda f: _SEVERITY_RANK[f.severity])  # stable: keeps order
-            kept, extra = ranked[: limits.max_comments], ranked[limits.max_comments :]
-            logger.warning("comment_cap_hit", kept=len(kept), dropped=len(extra))
-            dropped = dropped + [(f, "over comment cap") for f in extra]
-        return {"validated": kept, "dropped": dropped}
+        kept, merged = aggregate(kept, limits.max_comments)
+        if any(reason == OVER_CAP for _, reason in merged):
+            logger.warning(
+                "comment_cap_hit",
+                kept=len(kept),
+                dropped=sum(reason == OVER_CAP for _, reason in merged),
+            )
+        return {"validated": kept, "dropped": dropped + merged}
 
     return validate
 

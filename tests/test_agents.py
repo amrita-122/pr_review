@@ -33,7 +33,7 @@ async def test_every_file_goes_to_every_agent_and_findings_are_tagged() -> None:
     def reviewer(agent: str, category: Category):  # type: ignore[no-untyped-def]
         async def run(path: str, numbered: str) -> list[Finding]:
             calls.append(agent)
-            return [_finding(category)]
+            return [_finding(category, line=2 if agent == "security" else 3)]
 
         return run
 
@@ -137,7 +137,7 @@ def test_build_reviewers_returns_one_reviewer_per_enabled_agent() -> None:
 
 
 def test_quality_prompt_carries_the_same_defences_as_the_security_prompt() -> None:
-    quality = load_prompt("quality_v1")
+    quality = load_prompt("quality_v2")
     assert "random token" in quality and "untrusted" in quality.lower()
     assert "No links or hostnames" in quality
     for category in AGENT_CATEGORIES[Agent.QUALITY]:

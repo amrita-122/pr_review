@@ -30,6 +30,7 @@ from app.github.client import (
 )
 from app.jobs.errors import classify
 from app.jobs.payload import ReviewJobPayload
+from app.review.aggregate import MERGED, OVER_CAP
 from app.review.cost import Prices, Usage, estimate_cost, usage_from_metadata
 from app.review.graph import ReviewLimits, review_diff
 from app.review.llm import Reviewer
@@ -169,7 +170,15 @@ async def _run(
     )
     _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
 
-    summary = render_summary(len(outcome.reviewed), outcome.findings, skipped + outcome.skipped)
+    overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
+    merged = sum(reason == MERGED for _, reason in outcome.dropped)
+    summary = render_summary(
+        len(outcome.reviewed),
+        outcome.findings,
+        skipped + outcome.skipped,
+        overflow=overflow,
+        merged=merged,
+    )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
         for f in outcome.findings

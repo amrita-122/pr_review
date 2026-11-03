@@ -22,15 +22,33 @@ def render_comment(finding: Finding) -> str:
 
 
 def render_summary(
-    reviewed_count: int, findings: list[Finding], skipped: list[tuple[str, str]]
+    reviewed_count: int,
+    findings: list[Finding],
+    skipped: list[tuple[str, str]],
+    *,
+    overflow: int = 0,
+    merged: int = 0,
 ) -> str:
+    """The review's top-level text. `overflow` = findings cut by the comment cap, `merged` =
+    duplicates folded into another finding; both are stated so the list is never silently short."""
     lines = [f"Reviewed {reviewed_count} file(s)."]
     if findings:
-        counts = Counter(f.severity.value for f in findings)
-        detail = ", ".join(f"{n} {sev}" for sev, n in counts.items())
+        severities = Counter(f.severity.value for f in findings)
+        detail = ", ".join(f"{n} {sev}" for sev, n in severities.items())
         lines.append(f"{len(findings)} finding(s): {detail}. See the inline comments.")
+        categories = Counter(f.category.value for f in findings)
+        if len(categories) > 1:
+            lines.append(
+                "By category: " + ", ".join(f"{n} {cat}" for cat, n in categories.most_common())
+            )
     else:
         lines.append("No findings.")
+    if overflow:
+        lines.append(
+            f"{overflow} lower-priority finding(s) were not posted (comment limit reached)."
+        )
+    if merged:
+        lines.append(f"{merged} duplicate finding(s) were merged into the ones above.")
     if skipped:
         lines += ["", f"Skipped {len(skipped)} file(s):"]
         lines += [f"- `{_inline(name)}`: {reason}" for name, reason in skipped[:MAX_SKIPPED_LISTED]]

@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     price_input_per_mtok: Decimal = Decimal("2")
     price_output_per_mtok: Decimal = Decimal("10")
     prompt_version: str = "security_v5"
-    quality_prompt_version: str = "quality_v1"
+    quality_prompt_version: str = "quality_v2"
     # Which review agents run, comma separated: security, quality.
     enabled_agents: str = "security,quality"
     langsmith_tracing: bool = False
