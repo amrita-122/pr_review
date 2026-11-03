@@ -1,4 +1,6 @@
-from collections.abc import Iterator
+import asyncio
+import base64
+from collections.abc import Awaitable, Callable, Iterator
 
 import pytest
 from sqlalchemy import create_engine
@@ -7,10 +9,14 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import Settings, get_settings
 from app.db.models import Base
+from app.github import auth
 from app.github.webhooks import PullRequestEvent
+from app.jobs.queue import enqueue_review
+from app.jobs.worker import run_worker
 from app.main import app, get_db
 from app.review.fake import review_file
 from app.review.schemas import Finding
+from tests.helpers import PRIVATE_PEM
 
 TEST_SECRET = "test-webhook-secret"  # noqa: S105
 
@@ -19,7 +25,6 @@ TEST_SECRET = "test-webhook-secret"  # noqa: S105
 def webhook_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", TEST_SECRET)
     monkeypatch.setenv("GITHUB_APP_ID", "12345")
-    monkeypatch.setenv("GITHUB_PRIVATE_KEY_BASE64", "unused")
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "unused")
     monkeypatch.setenv("MODEL_REVIEW", "test-model")
@@ -28,6 +33,17 @@ def webhook_secret(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def github_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """A throwaway App private key, so installation-token minting works against respx mocks."""
+    monkeypatch.setenv("GITHUB_PRIVATE_KEY_BASE64", base64.b64encode(PRIVATE_PEM.encode()).decode())
+    get_settings.cache_clear()
+    auth._token_cache.clear()
+    yield
+    get_settings.cache_clear()
+    auth._token_cache.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -45,21 +61,31 @@ def db_session(monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
 
     app.dependency_overrides[get_db] = override
     monkeypatch.setattr("app.jobs.handlers.get_session", factory)  # run records -> test DB
+    monkeypatch.setattr("app.jobs.worker.get_session", factory)  # queue -> test DB
     with factory() as session:
         yield session
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(autouse=True)
-def processed(monkeypatch: pytest.MonkeyPatch) -> list[PullRequestEvent]:
-    """Replaces the background job so unit tests never touch GitHub."""
-    calls: list[PullRequestEvent] = []
+@pytest.fixture
+def enqueue(db_session: Session) -> Callable[[PullRequestEvent], None]:
+    """Queue a review exactly as the webhook does (run + job), then commit."""
 
-    async def fake(event: PullRequestEvent) -> None:
-        calls.append(event)
+    def _enqueue(event: PullRequestEvent) -> None:
+        enqueue_review(db_session, event, get_settings())
+        db_session.commit()
 
-    monkeypatch.setattr("app.main.process_pull_request", fake)
-    return calls
+    return _enqueue
+
+
+@pytest.fixture
+def drain() -> Callable[[], Awaitable[None]]:
+    """Run the worker until no job is due. Failed jobs rescheduled into the future stay queued."""
+
+    async def _drain() -> None:
+        await run_worker(get_settings(), asyncio.Event(), once=True)
+
+    return _drain
 
 
 @pytest.fixture(autouse=True)

@@ -1,9 +1,11 @@
 import httpx
 from pydantic import BaseModel
 
-from app.github.auth import GITHUB_API
+from app.github.http import get_with_retry, github_client
 
 FILES_PER_PAGE = 100
+REVIEW_TIMEOUT = httpx.Timeout(20.0, connect=5.0)  # posting a big review takes longer than a read
+MAX_REVIEW_PAGES = 5
 # GitHub's pulls/{n}/files endpoint returns at most 3000 files (30 pages of 100).
 MAX_PAGES = 30
 
@@ -33,7 +35,7 @@ def _headers(token: str) -> dict[str, str]:
 
 async def post_pr_comment(token: str, owner: str, repo: str, number: int, body: str) -> None:
     """PR conversation comments go through the issues API."""
-    async with httpx.AsyncClient(base_url=GITHUB_API, timeout=10) as client:
+    async with github_client() as client:
         response = await client.post(
             f"/repos/{owner}/{repo}/issues/{number}/comments",
             json={"body": body},
@@ -51,13 +53,12 @@ async def list_pr_files(
     huge PR can make us fetch (it is attacker-controlled size).
     """
     files: list[ChangedFile] = []
-    async with httpx.AsyncClient(base_url=GITHUB_API, timeout=10) as client:
+    async with github_client() as client:
         # The first request carries params; "next" URLs are absolute and already have them.
         url = f"/repos/{owner}/{repo}/pulls/{number}/files"
         params: dict[str, int] | None = {"per_page": FILES_PER_PAGE}
         for _ in range(min(max_pages, MAX_PAGES)):
-            response = await client.get(url, params=params, headers=_headers(token))
-            response.raise_for_status()
+            response = await get_with_retry(client, url, params=params, headers=_headers(token))
             files.extend(ChangedFile.model_validate(item) for item in response.json())
             next_url = response.links.get("next", {}).get("url")
             if next_url is None:
@@ -90,10 +91,39 @@ async def post_review(
         "body": body,
         "comments": [c.model_dump() for c in comments],
     }
-    async with httpx.AsyncClient(base_url=GITHUB_API, timeout=20) as client:
+    async with github_client(REVIEW_TIMEOUT) as client:
         response = await client.post(
             f"/repos/{owner}/{repo}/pulls/{number}/reviews",
             json=payload,
             headers=_headers(token),
         )
     response.raise_for_status()
+
+
+async def get_pr_head_sha(token: str, owner: str, repo: str, number: int) -> str:
+    """The PR's CURRENT head commit. Used right before posting to detect a newer push."""
+    async with github_client() as client:
+        response = await get_with_retry(
+            client, f"/repos/{owner}/{repo}/pulls/{number}", headers=_headers(token)
+        )
+    return str(response.json()["head"]["sha"])
+
+
+async def review_exists(
+    token: str, owner: str, repo: str, number: int, commit_id: str, marker: str
+) -> bool:
+    """True if a review on this commit already carries our marker (an earlier attempt posted it)."""
+    async with github_client() as client:
+        url = f"/repos/{owner}/{repo}/pulls/{number}/reviews"
+        params: dict[str, int] | None = {"per_page": FILES_PER_PAGE}
+        for _ in range(MAX_REVIEW_PAGES):
+            response = await get_with_retry(client, url, params=params, headers=_headers(token))
+            for review in response.json():
+                body = review.get("body") or ""
+                if review.get("commit_id") == commit_id and marker in body:
+                    return True
+            next_url = response.links.get("next", {}).get("url")
+            if next_url is None:
+                return False
+            url, params = next_url, None
+    return False

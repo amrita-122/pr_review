@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     max_findings_per_file: int = 10
     max_comments_per_review: int = 25
     max_listed_pages: int = 3  # pages of 100 files fetched from GitHub; the rest are not listed
+    # Job queue (Phase 6). The job deadline must stay below the lease or a live job is reaped.
+    job_max_attempts: int = 3
+    job_poll_seconds: float = 2.0
+    job_lease_seconds: float = 600.0
+    job_deadline_seconds: float = 480.0
+    job_backoff_base_seconds: float = 30.0
+    shutdown_grace_seconds: float = 30.0
+    db_connect_timeout_seconds: int = 5
+    db_statement_timeout_ms: int = 15_000
     model_timeout_seconds: float = 60.0
     # USD per million tokens; defaults are Claude Sonnet 5.5 list prices. Estimates only.
     price_input_per_mtok: Decimal = Decimal("2")
