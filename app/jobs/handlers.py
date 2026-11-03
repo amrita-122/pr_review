@@ -5,7 +5,7 @@ any failure; the worker decides about retries. It is safe to run twice for the s
 not post a second review (see _post_once), and it will not post for a superseded run.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from decimal import Decimal
 
 import httpx
@@ -32,7 +32,8 @@ from app.jobs.errors import classify
 from app.jobs.payload import ReviewJobPayload
 from app.review.cost import Prices, Usage, estimate_cost, usage_from_metadata
 from app.review.graph import ReviewLimits, review_diff
-from app.review.llm import Reviewer, build_default_reviewer
+from app.review.llm import Reviewer
+from app.review.llm import build_reviewers as build_reviewers_for
 from app.review.render import render_comment, render_summary
 
 logger = structlog.get_logger()
@@ -40,9 +41,9 @@ logger = structlog.get_logger()
 FAILURE_COMMENT = "Review failed. Push a new commit to try again."
 
 
-def build_reviewer() -> Reviewer:
-    """The one place the job creates the real model. Tests replace this with a fake."""
-    return build_default_reviewer(get_settings())
+def build_reviewers() -> Mapping[str, Reviewer]:
+    """The one place the job creates the real models. Tests replace this with a fake."""
+    return build_reviewers_for(get_settings())
 
 
 def review_marker(run_id: str) -> str:
@@ -153,7 +154,7 @@ async def _run(
 
     outcome = await review_diff(
         parsed_files,
-        build_reviewer(),
+        build_reviewers(),
         ReviewLimits.from_settings(settings),
         run_name=f"review {payload.repo_full_name}#{payload.number}",
         metadata={

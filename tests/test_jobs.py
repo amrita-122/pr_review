@@ -93,7 +93,7 @@ async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
         real = review_file(path, numbered)
         return [*real, real[0].model_copy(update={"line": 999})]
 
-    monkeypatch.setattr(handlers, "build_reviewer", lambda: with_bad_line)
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: with_bad_line)
     event = make_event()
     gh = Pipeline(event)
     enqueue(event)
@@ -133,7 +133,7 @@ async def test_reviewer_never_receives_pr_title_or_description(
         seen.extend([path, numbered])
         return []
 
-    monkeypatch.setattr(handlers, "build_reviewer", lambda: spy)
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: spy)
     event = PullRequestEvent.model_validate(raw)
     Pipeline(event)
     enqueue(event)
@@ -201,7 +201,7 @@ async def test_gives_up_after_max_attempts_without_leaking_error_details(
     def boom() -> object:
         raise RuntimeError("secret detail https://internal.example/x token=abc")
 
-    monkeypatch.setattr(handlers, "build_reviewer", boom)
+    monkeypatch.setattr(handlers, "build_reviewers", boom)
     event = make_event()
     gh = Pipeline(event)
     enqueue(event)
@@ -228,7 +228,7 @@ async def test_job_deadline_turns_a_hang_into_a_retry(
         await asyncio.sleep(5)
         return []
 
-    monkeypatch.setattr(handlers, "build_reviewer", lambda: slow)
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: slow)
     event = make_event()
     gh = Pipeline(event)
     enqueue(event)
@@ -467,7 +467,7 @@ async def test_shutdown_mid_job_releases_it_without_using_an_attempt(
         await asyncio.sleep(5)
         return []
 
-    monkeypatch.setattr(handlers, "build_reviewer", lambda: slow)
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: slow)
     event = make_event()
     gh = Pipeline(event)
     enqueue(event)
@@ -492,7 +492,7 @@ async def test_shutdown_lets_a_quick_job_finish(
         await asyncio.sleep(0.05)
         return []
 
-    monkeypatch.setattr(handlers, "build_reviewer", lambda: quick)
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: quick)
     event = make_event()
     gh = Pipeline(event)
     enqueue(event)
@@ -593,7 +593,7 @@ async def test_job_logs_start_and_the_job_id_reaches_the_review_code(
         seen.append(dict(structlog.contextvars.get_contextvars()))
         return []
 
-    monkeypatch.setattr(handlers, "build_reviewer", lambda: spy)
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: spy)
     event = make_event()
     Pipeline(event)
     enqueue(event)

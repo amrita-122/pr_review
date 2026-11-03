@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 import sys
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -18,7 +19,7 @@ from typing import Any
 from app.config import Settings
 from app.review.cost import Prices
 from app.review.graph import ReviewLimits
-from app.review.llm import Reviewer, build_default_reviewer
+from app.review.llm import Reviewer, build_reviewers
 from evals.metrics import summarize
 from evals.redteam import (
     RedTeamCase,
@@ -57,7 +58,10 @@ def _pct(value: float | None) -> str:
 
 
 async def run_redteam_once(
-    cases: list[RedTeamCase], reviewer: Reviewer, settings: Settings, budget: Budget
+    cases: list[RedTeamCase],
+    reviewer: Reviewer | Mapping[str, Reviewer],
+    settings: Settings,
+    budget: Budget,
 ) -> list[RedTeamResult]:
     from evals.run import CASE_CONCURRENCY
 
@@ -115,7 +119,10 @@ async def amain_redteam(args: argparse.Namespace, settings: Settings) -> int:
             print(f"unknown case ids: {sorted(unknown)}", file=sys.stderr)
             return 2
         cases = [c for c in cases if c.row.case_id in set(args.case)]
-    reviewer = build_default_reviewer(settings, prompt_version)
+    from evals.run import _agents_arg
+
+    agents = _agents_arg(args.agents, default=settings.enabled_agents)
+    reviewer = build_reviewers(settings, agents=agents, security_version=prompt_version)
     budget = Budget(Decimal(str(args.max_cost)))
 
     runs: list[dict[str, Any]] = []

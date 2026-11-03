@@ -35,9 +35,20 @@ class Settings(BaseSettings):
     price_input_per_mtok: Decimal = Decimal("2")
     price_output_per_mtok: Decimal = Decimal("10")
     prompt_version: str = "security_v5"
+    quality_prompt_version: str = "quality_v1"
+    # Which review agents run, comma separated: security, quality.
+    enabled_agents: str = "security,quality"
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "pr-review-agent"
+
+    @property
+    def agent_names(self) -> list[str]:
+        names = [n.strip().lower() for n in self.enabled_agents.split(",") if n.strip()]
+        unknown = set(names) - {"security", "quality"}
+        if unknown or not names:
+            raise ValueError(f"ENABLED_AGENTS must list security and/or quality, got {names}")
+        return list(dict.fromkeys(names))
 
     @property
     def sqlalchemy_url(self) -> str:

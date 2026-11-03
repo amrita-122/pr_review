@@ -53,7 +53,7 @@ async def test_one_failing_file_does_not_fail_the_run() -> None:
     outcome = await review_diff(_files("good.py", "bad.py"), reviewer, LIMITS)
     assert [f.file_path for f in outcome.findings] == ["good.py"]
     assert set(outcome.reviewed) == {"good.py"}
-    assert outcome.skipped == [("bad.py", "review failed")]
+    assert outcome.skipped == [("bad.py", "security review failed")]
 
 
 async def test_invalid_line_is_dropped_by_the_validator() -> None:

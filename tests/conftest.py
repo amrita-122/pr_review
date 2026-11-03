@@ -95,4 +95,4 @@ def fake_reviewer(monkeypatch: pytest.MonkeyPatch) -> None:
     async def reviewer(path: str, numbered: str) -> list[Finding]:
         return review_file(path, numbered)
 
-    monkeypatch.setattr("app.jobs.handlers.build_reviewer", lambda: reviewer)
+    monkeypatch.setattr("app.jobs.handlers.build_reviewers", lambda: reviewer)

@@ -28,6 +28,7 @@ from app.review.schemas import Finding, ReviewResult
 logger = structlog.get_logger()
 
 PROMPT_VERSION = "security_v5"
+QUALITY_PROMPT_VERSION = "quality_v1"
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 
 # Same inputs as the fake reviewer, but async because it waits on the network.
@@ -55,10 +56,10 @@ def load_prompt(version: str = PROMPT_VERSION) -> str:
     return (_PROMPT_DIR / f"{version}.md").read_text(encoding="utf-8")
 
 
-def build_chat_model(settings: Settings) -> BaseChatModel:
+def build_chat_model(settings: Settings, model: str | None = None) -> BaseChatModel:
     # max_retries=0: tenacity owns retries so there is exactly one place that decides them.
     return ChatAnthropic(  # type: ignore[call-arg]
-        model=settings.model_review,
+        model=model or settings.model_review,
         api_key=settings.anthropic_api_key,
         timeout=settings.model_timeout_seconds,
         max_tokens=settings.max_output_tokens,
@@ -73,6 +74,30 @@ def build_default_reviewer(settings: Settings, prompt_version: str | None = None
         prompt=load_prompt(prompt_version or settings.prompt_version),
         timeout_seconds=settings.model_timeout_seconds,
     )
+
+
+def build_reviewers(
+    settings: Settings,
+    *,
+    agents: list[str] | None = None,
+    security_version: str | None = None,
+    quality_version: str | None = None,
+) -> dict[str, Reviewer]:
+    """One reviewer per enabled agent, sharing one chat model. Keys are the agent names."""
+    names = agents if agents is not None else settings.agent_names
+    model = build_chat_model(settings)
+    prompts = {
+        "security": security_version or settings.prompt_version,
+        "quality": quality_version or settings.quality_prompt_version,
+    }
+    return {
+        name: make_reviewer(
+            model,
+            prompt=load_prompt(prompts[name]),
+            timeout_seconds=settings.model_timeout_seconds,
+        )
+        for name in names
+    }
 
 
 MAX_NONCE_ATTEMPTS = 5

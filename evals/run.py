@@ -10,6 +10,7 @@ import asyncio
 import json
 import sys
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -21,7 +22,8 @@ from app.config import Settings, get_settings
 from app.logging import configure_logging
 from app.review.cost import Prices, estimate_cost, usage_from_metadata
 from app.review.graph import ReviewLimits, review_diff
-from app.review.llm import Reviewer, build_default_reviewer
+from app.review.llm import Reviewer, build_reviewers
+from app.review.schemas import agent_for_category
 from evals.dataset import Case, load_cases
 from evals.metrics import CaseResult, match_case, score_run, summarize
 
@@ -48,7 +50,7 @@ class Budget:
 
 async def run_case(
     case: Case,
-    reviewer: Reviewer,
+    reviewer: Reviewer | Mapping[str, Reviewer],
     limits: ReviewLimits,
     prices: Prices,
     budget: Budget,
@@ -68,9 +70,13 @@ async def run_case(
     usage = usage_from_metadata(usage_handler.usage_metadata)
     cost = estimate_cost(usage, prices)
     budget.add(cost)
+    # Only score the bugs the agents that ran can find (a security-only run is not "missing" a
+    # quality bug).
+    agents = set(reviewer) if isinstance(reviewer, Mapping) else {"security"}
+    expected = [e for e in case.expected if agent_for_category(e.category).value in agents]
     return CaseResult(
         case_id=case.case_id,
-        expected=case.expected,
+        expected=expected,
         findings=outcome.findings,
         raw_count=outcome.raw_count,
         dropped_count=len(outcome.dropped),
@@ -84,7 +90,10 @@ async def run_case(
 
 
 async def run_once(
-    cases: list[Case], reviewer: Reviewer, settings: Settings, budget: Budget
+    cases: list[Case],
+    reviewer: Reviewer | Mapping[str, Reviewer],
+    settings: Settings,
+    budget: Budget,
 ) -> list[CaseResult]:
     limits = ReviewLimits.from_settings(settings)
     prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
@@ -162,6 +171,14 @@ def print_report(
         )
 
 
+def _agents_arg(value: str | None, *, default: str) -> list[str]:
+    """--agents security,quality -> ["security", "quality"] (validated)."""
+    names = [n.strip().lower() for n in (value or default).split(",") if n.strip()]
+    if not names or set(names) - {"security", "quality"}:
+        raise SystemExit(f"--agents must list security and/or quality, got {value!r}")
+    return list(dict.fromkeys(names))
+
+
 def _result_path(prompt_version: str, out_dir: Path) -> Path:
     base = f"{datetime.now(UTC):%Y-%m-%d}_{prompt_version}"
     path = out_dir / f"{base}.json"
@@ -186,7 +203,8 @@ async def amain(args: argparse.Namespace) -> int:
             print(f"unknown case ids: {sorted(unknown)}", file=sys.stderr)
             return 2
         cases = [c for c in cases if c.case_id in set(args.case)]
-    reviewer = build_default_reviewer(settings, prompt_version)
+    agents = _agents_arg(args.agents, default="security")
+    reviewer = build_reviewers(settings, agents=agents, security_version=prompt_version)
     budget = Budget(Decimal(str(args.max_cost)))
 
     runs: list[dict[str, Any]] = []
@@ -247,6 +265,12 @@ def main() -> None:
         "--suite", choices=("golden", "redteam"), default="golden", help="which case set to run"
     )
     parser.add_argument("--label", help="redteam only: name for the result file, e.g. baseline")
+    parser.add_argument(
+        "--agents",
+        help="which agents run: security, quality or security,quality "
+        "(golden default: security, so the existing gate stays comparable; "
+        "redteam default: ENABLED_AGENTS)",
+    )
     parser.add_argument("--case", action="append", help="only this case id (repeatable)")
     parser.add_argument(
         "--max-cost",

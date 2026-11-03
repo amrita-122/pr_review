@@ -136,3 +136,32 @@ async def test_run_case_with_fake_reviewer_scores_a_perfect_hit() -> None:
     )
     assert not result.errored
     assert len(match_case(case.expected, result.findings).true_positives) == 1
+
+
+async def test_run_case_scores_only_the_bugs_the_running_agents_can_find() -> None:
+    import asyncio
+
+    from app.review.cost import Prices
+    from app.review.graph import ReviewLimits
+    from evals.run import run_case
+
+    case = next(c for c in load_cases() if c.case_id == "inj_sql_fstring")
+    quality_bug = Expected(
+        case_id=case.case_id,
+        file=case.path,
+        line_start=1,
+        line_end=1,
+        category=Category.RESOURCE_LEAK,
+    )
+    mixed = case.model_copy(update={"expected": [*case.expected, quality_bug]})
+
+    async def nothing(path: str, numbered: str) -> list[Finding]:
+        return []
+
+    args = (ReviewLimits(10, 20000), Prices(Decimal(2), Decimal(10)), Budget(Decimal(1)))
+    security_only = await run_case(mixed, {"security": nothing}, *args, asyncio.Semaphore(1))
+    both = await run_case(
+        mixed, {"security": nothing, "quality": nothing}, *args, asyncio.Semaphore(1)
+    )
+    assert [e.category for e in security_only.expected] == [Category.INJECTION]
+    assert {e.category for e in both.expected} == {Category.INJECTION, Category.RESOURCE_LEAK}

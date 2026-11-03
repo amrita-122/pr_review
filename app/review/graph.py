@@ -13,7 +13,7 @@ from langgraph.types import Send
 from app.config import Settings
 from app.diff.parse import ParsedFile
 from app.review.llm import Reviewer
-from app.review.schemas import Finding, Severity
+from app.review.schemas import Agent, Finding, ReviewFinding, Severity
 from app.review.validate import Dropped, partition_findings
 
 logger = structlog.get_logger()
@@ -67,6 +67,7 @@ class ReviewState(TypedDict):
 class FileTask(TypedDict):
     path: str
     numbered: str
+    agent: str  # which reviewer runs on this file: "security" or "quality"
 
 
 def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing is too strict
@@ -90,36 +91,46 @@ def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing 
     return prepare
 
 
-def _fan_out(state: ReviewState) -> list[Send] | str:
-    """One `Send` per file: LangGraph runs these review_file calls in parallel."""
-    if not state["to_review"]:
-        return "validate"
-    return [
-        Send("review_file", FileTask(path=path, numbered=parsed.numbered))
-        for path, parsed in state["to_review"].items()
-    ]
+def _fan_out(agents: list[str]) -> Any:
+    def fan_out(state: ReviewState) -> list[Send] | str:
+        """One `Send` per (file, agent): LangGraph runs these review_file calls in parallel."""
+        if not state["to_review"]:
+            return "validate"
+        return [
+            Send("review_file", FileTask(path=path, numbered=parsed.numbered, agent=agent))
+            for path, parsed in state["to_review"].items()
+            for agent in agents
+        ]
+
+    return fan_out
 
 
 def _review_file(
-    reviewer: Reviewer, limits: ReviewLimits
+    reviewers: Mapping[str, Reviewer], limits: ReviewLimits
 ) -> Any:  # node callable; takes a FileTask, not the state
     async def review_file(task: FileTask) -> dict[str, Any]:
+        agent = task["agent"]
         try:
-            findings = await reviewer(task["path"], task["numbered"])
+            findings = await reviewers[agent](task["path"], task["numbered"])
         except Exception as exc:  # one bad file must never fail the whole run
-            logger.warning("file_review_failed", file=task["path"], error=type(exc).__name__)
-            return {"errors": [(task["path"], "review failed")]}
+            logger.warning(
+                "file_review_failed", file=task["path"], agent=agent, error=type(exc).__name__
+            )
+            return {"errors": [(task["path"], f"{agent} review failed")]}
         if len(findings) > limits.max_findings_per_file:
             logger.warning(
                 "findings_truncated",
                 file=task["path"],
+                agent=agent,
                 produced=len(findings),
                 kept=limits.max_findings_per_file,
             )
             findings = sorted(findings, key=lambda f: _SEVERITY_RANK[f.severity])[
                 : limits.max_findings_per_file
             ]
-        return {"findings": findings}
+        # The agent comes from OUR node, never from the model's output.
+        tagged = [ReviewFinding(**f.model_dump(), agent=Agent(agent)) for f in findings]
+        return {"findings": tagged}
 
     return review_file
 
@@ -137,13 +148,13 @@ def _validate(limits: ReviewLimits) -> Any:
     return validate
 
 
-def build_graph(reviewer: Reviewer, limits: ReviewLimits) -> Any:
+def build_graph(reviewers: Mapping[str, Reviewer], limits: ReviewLimits) -> Any:
     graph = StateGraph(ReviewState)
     graph.add_node("prepare", _prepare(limits))
-    graph.add_node("review_file", _review_file(reviewer, limits))
+    graph.add_node("review_file", _review_file(reviewers, limits))
     graph.add_node("validate", _validate(limits))
     graph.add_edge(START, "prepare")
-    graph.add_conditional_edges("prepare", _fan_out, ["review_file", "validate"])
+    graph.add_conditional_edges("prepare", _fan_out(list(reviewers)), ["review_file", "validate"])
     graph.add_edge("review_file", "validate")
     graph.add_edge("validate", END)
     return graph.compile()
@@ -151,7 +162,7 @@ def build_graph(reviewer: Reviewer, limits: ReviewLimits) -> Any:
 
 async def review_diff(
     files: Mapping[str, ParsedFile],
-    reviewer: Reviewer,
+    reviewers: Reviewer | Mapping[str, Reviewer],
     limits: ReviewLimits,
     *,
     run_name: str | None = None,
@@ -160,9 +171,12 @@ async def review_diff(
 ) -> ReviewOutcome:
     """Review parsed files. Evals call this directly; it knows nothing about GitHub.
 
-    run_name / metadata / callbacks only label and observe the run (tracing, token counting).
+    `reviewers` is one reviewer (treated as the security agent) or {agent name: reviewer}; every
+    file goes to every agent, in parallel. run_name / metadata / callbacks only label and observe
+    the run (tracing, token counting).
     """
-    app = build_graph(reviewer, limits)
+    by_agent = {Agent.SECURITY.value: reviewers} if callable(reviewers) else dict(reviewers)
+    app = build_graph(by_agent, limits)
     initial: ReviewState = {
         "files": dict(files),
         "to_review": {},
@@ -180,7 +194,9 @@ async def review_diff(
     if callbacks:
         config["callbacks"] = callbacks
     final = await app.ainvoke(initial, config=config)
-    failed = {path for path, _ in final["errors"]}
+    failed = {
+        path for path, _ in final["errors"]
+    }  # any agent failing marks the file not fully reviewed
     reviewed = {p: f for p, f in final["to_review"].items() if p not in failed}
     return ReviewOutcome(
         findings=final["validated"],
