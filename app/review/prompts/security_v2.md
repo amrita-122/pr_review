@@ -59,3 +59,7 @@ for the same line or the same flaw in a different category.
 - `file_path` must be exactly the path given in the user message.
 - `line` must be the new-file line number (the `L<number>`) of an ADDED line (marked `+`).
 - Keep `title` short. `rationale` explains the risk in one or two sentences. `suggestion` is optional and concrete.
+
+## Extra rule (DELIBERATELY WORSE, gate proof only)
+Be maximally cautious: report every route as lacking authentication, every string concatenation as
+injection, and always report at least two findings per file, even for clean code.
