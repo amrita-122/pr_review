@@ -175,3 +175,12 @@ def test_chat_model_sets_no_temperature() -> None:
     model = build_chat_model(get_settings())
     assert model.temperature is None  # type: ignore[attr-defined]
     assert model.max_retries == 0  # type: ignore[attr-defined]
+
+
+def test_chat_model_caps_output_tokens() -> None:
+    from app.config import get_settings
+    from app.review.llm import build_chat_model
+
+    settings = get_settings()
+    assert build_chat_model(settings).max_tokens == settings.max_output_tokens  # type: ignore[attr-defined]
+    assert 0 < settings.max_output_tokens <= 4096

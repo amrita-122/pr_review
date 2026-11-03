@@ -10,9 +10,10 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
+from app.config import Settings
 from app.diff.parse import ParsedFile
 from app.review.llm import Reviewer
-from app.review.schemas import Finding
+from app.review.schemas import Finding, Severity
 from app.review.validate import Dropped, partition_findings
 
 logger = structlog.get_logger()
@@ -20,10 +21,28 @@ logger = structlog.get_logger()
 MAX_CONCURRENT_FILES = 5  # parallel model calls; keeps us under provider rate limits
 
 
+_SEVERITY_RANK = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.LOW: 3}
+
+
 @dataclass(frozen=True)
 class ReviewLimits:
+    """Caps on what one PR can make us spend or say (the PR author controls its size)."""
+
     max_files: int
     max_chars_per_file: int
+    max_total_chars: int = 150_000  # all reviewed diffs together
+    max_findings_per_file: int = 10  # what we accept from one model call
+    max_comments: int = 25  # inline comments in one review
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "ReviewLimits":
+        return cls(
+            max_files=settings.max_files_per_pr,
+            max_chars_per_file=settings.max_chars_per_file,
+            max_total_chars=settings.max_total_chars_per_pr,
+            max_findings_per_file=settings.max_findings_per_file,
+            max_comments=settings.max_comments_per_review,
+        )
 
 
 @dataclass
@@ -54,13 +73,18 @@ def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing 
     def prepare(state: ReviewState) -> dict[str, Any]:
         to_review: dict[str, ParsedFile] = {}
         skipped: list[tuple[str, str]] = []
+        total = 0
         for path, parsed in state["files"].items():
+            size = len(parsed.numbered)
             if len(to_review) >= limits.max_files:
                 skipped.append((path, f"over the {limits.max_files}-file limit"))
-            elif len(parsed.numbered) > limits.max_chars_per_file:
-                skipped.append((path, f"diff too large ({len(parsed.numbered)} chars)"))
+            elif size > limits.max_chars_per_file:
+                skipped.append((path, f"diff too large ({size} chars)"))
+            elif total + size > limits.max_total_chars:
+                skipped.append((path, "over the total PR size limit"))
             else:
                 to_review[path] = parsed
+                total += size
         return {"to_review": to_review, "limit_skipped": skipped}
 
     return prepare
@@ -76,28 +100,48 @@ def _fan_out(state: ReviewState) -> list[Send] | str:
     ]
 
 
-def _review_file(reviewer: Reviewer) -> Any:  # node callable; takes a FileTask, not the state
+def _review_file(
+    reviewer: Reviewer, limits: ReviewLimits
+) -> Any:  # node callable; takes a FileTask, not the state
     async def review_file(task: FileTask) -> dict[str, Any]:
         try:
             findings = await reviewer(task["path"], task["numbered"])
         except Exception as exc:  # one bad file must never fail the whole run
             logger.warning("file_review_failed", file=task["path"], error=type(exc).__name__)
             return {"errors": [(task["path"], "review failed")]}
+        if len(findings) > limits.max_findings_per_file:
+            logger.warning(
+                "findings_truncated",
+                file=task["path"],
+                produced=len(findings),
+                kept=limits.max_findings_per_file,
+            )
+            findings = sorted(findings, key=lambda f: _SEVERITY_RANK[f.severity])[
+                : limits.max_findings_per_file
+            ]
         return {"findings": findings}
 
     return review_file
 
 
-def _validate(state: ReviewState) -> dict[str, Any]:
-    kept, dropped = partition_findings(state["findings"], state["to_review"])
-    return {"validated": kept, "dropped": dropped}
+def _validate(limits: ReviewLimits) -> Any:
+    def validate(state: ReviewState) -> dict[str, Any]:
+        kept, dropped = partition_findings(state["findings"], state["to_review"])
+        if len(kept) > limits.max_comments:
+            ranked = sorted(kept, key=lambda f: _SEVERITY_RANK[f.severity])  # stable: keeps order
+            kept, extra = ranked[: limits.max_comments], ranked[limits.max_comments :]
+            logger.warning("comment_cap_hit", kept=len(kept), dropped=len(extra))
+            dropped = dropped + [(f, "over comment cap") for f in extra]
+        return {"validated": kept, "dropped": dropped}
+
+    return validate
 
 
 def build_graph(reviewer: Reviewer, limits: ReviewLimits) -> Any:
     graph = StateGraph(ReviewState)
     graph.add_node("prepare", _prepare(limits))
-    graph.add_node("review_file", _review_file(reviewer))
-    graph.add_node("validate", _validate)
+    graph.add_node("review_file", _review_file(reviewer, limits))
+    graph.add_node("validate", _validate(limits))
     graph.add_edge(START, "prepare")
     graph.add_conditional_edges("prepare", _fan_out, ["review_file", "validate"])
     graph.add_edge("review_file", "validate")

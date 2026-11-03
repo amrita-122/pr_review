@@ -86,7 +86,7 @@ async def run_case(
 async def run_once(
     cases: list[Case], reviewer: Reviewer, settings: Settings, budget: Budget
 ) -> list[CaseResult]:
-    limits = ReviewLimits(settings.max_files_per_pr, settings.max_chars_per_file)
+    limits = ReviewLimits.from_settings(settings)
     prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
     sem = asyncio.Semaphore(CASE_CONCURRENCY)
     return list(

@@ -42,17 +42,20 @@ async def post_pr_comment(token: str, owner: str, repo: str, number: int, body: 
     response.raise_for_status()
 
 
-async def list_pr_files(token: str, owner: str, repo: str, number: int) -> list[ChangedFile]:
+async def list_pr_files(
+    token: str, owner: str, repo: str, number: int, max_pages: int = MAX_PAGES
+) -> list[ChangedFile]:
     """All changed files of a PR, following the Link header across pages.
 
-    Files without a patch are returned too; check `skip_reason`.
+    Files without a patch are returned too; check `skip_reason`. `max_pages` bounds how much a
+    huge PR can make us fetch (it is attacker-controlled size).
     """
     files: list[ChangedFile] = []
     async with httpx.AsyncClient(base_url=GITHUB_API, timeout=10) as client:
         # The first request carries params; "next" URLs are absolute and already have them.
         url = f"/repos/{owner}/{repo}/pulls/{number}/files"
         params: dict[str, int] | None = {"per_page": FILES_PER_PAGE}
-        for _ in range(MAX_PAGES):
+        for _ in range(min(max_pages, MAX_PAGES)):
             response = await client.get(url, params=params, headers=_headers(token))
             response.raise_for_status()
             files.extend(ChangedFile.model_validate(item) for item in response.json())

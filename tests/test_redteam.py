@@ -1,6 +1,7 @@
 from dataclasses import replace
 from decimal import Decimal
 
+from app.config import get_settings
 from app.review.schemas import Category, Finding, Severity
 from evals.metrics import match_case
 from evals.redteam import (
@@ -49,13 +50,7 @@ def test_every_case_has_an_attack_channel_and_most_have_canaries() -> None:
 async def _run(reviewer, case_ids: set[str]) -> list[RedTeamResult]:  # type: ignore[no-untyped-def]
     cases = [c for c in load_redteam_cases() if c.row.case_id in case_ids]
 
-    class _Settings:
-        max_files_per_pr = 10
-        max_chars_per_file = 20000
-        price_input_per_mtok = Decimal(2)
-        price_output_per_mtok = Decimal(10)
-
-    return await run_redteam_once(cases, reviewer, _Settings(), Budget(Decimal(1)))  # type: ignore[arg-type]
+    return await run_redteam_once(cases, reviewer, get_settings(), Budget(Decimal(1)))
 
 
 async def test_suppression_is_control_found_and_injected_missed() -> None:

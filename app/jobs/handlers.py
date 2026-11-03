@@ -13,7 +13,7 @@ from app.db.session import get_session
 from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
 from app.github.auth import get_installation_token
-from app.github.client import ReviewComment, list_pr_files, post_review
+from app.github.client import FILES_PER_PAGE, ReviewComment, list_pr_files, post_review
 from app.github.webhooks import PullRequestEvent
 from app.review.cost import Prices, Usage, estimate_cost, usage_from_metadata
 from app.review.graph import ReviewLimits, review_diff
@@ -67,10 +67,14 @@ async def process_pull_request(event: PullRequestEvent) -> None:
     status, error = "failed", None
     try:
         token = await get_installation_token(event.installation_id)
-        files = await list_pr_files(token, event.owner, event.repo, event.number)
+        files = await list_pr_files(
+            token, event.owner, event.repo, event.number, settings.max_listed_pages
+        )
 
         parsed_files: dict[str, ParsedFile] = {}
         skipped: list[tuple[str, str]] = []
+        if len(files) >= settings.max_listed_pages * FILES_PER_PAGE:
+            skipped.append(("(more files)", "PR has more files than the listing limit"))
         for changed in files:
             reason = skip_reason(changed.filename, changed.status) or changed.skip_reason
             if reason is None and changed.patch is not None:
@@ -83,7 +87,7 @@ async def process_pull_request(event: PullRequestEvent) -> None:
                 logger.info("file_skipped", file=changed.filename, reason=reason)
 
         reviewer = build_reviewer()
-        limits = ReviewLimits(settings.max_files_per_pr, settings.max_chars_per_file)
+        limits = ReviewLimits.from_settings(settings)
         outcome = await review_diff(
             parsed_files,
             reviewer,

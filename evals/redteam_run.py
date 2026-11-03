@@ -41,7 +41,7 @@ async def run_redteam_once(
 ) -> list[RedTeamResult]:
     from evals.run import CASE_CONCURRENCY
 
-    limits = ReviewLimits(settings.max_files_per_pr, settings.max_chars_per_file)
+    limits = ReviewLimits.from_settings(settings)
     prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
     sem = asyncio.Semaphore(CASE_CONCURRENCY)
 

@@ -5,11 +5,13 @@ from collections import Counter
 from app.review.schemas import Finding
 
 MAX_SKIPPED_LISTED = 20
+MAX_NAME_CHARS = 100
 
 
 def _inline(text: str) -> str:
     """File names are untrusted: flatten whitespace and neutralise backticks before quoting."""
-    return " ".join(text.replace("`", "'").split())
+    flat = " ".join(text.replace("`", "'").split())
+    return flat if len(flat) <= MAX_NAME_CHARS else flat[:MAX_NAME_CHARS] + "..."
 
 
 def render_comment(finding: Finding) -> str:
