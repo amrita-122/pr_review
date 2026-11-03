@@ -41,8 +41,8 @@ GitHub App, verifies it, ignores duplicates, and comments "Review bot received t
   everything else returns 202 and is ignored. Malformed payloads → 422.
 - Idempotency: the `X-GitHub-Delivery` id is inserted into Postgres (`webhook_deliveries`,
   primary key) before any work. A redelivery hits the key, returns 202 `duplicate`, and does nothing.
-- The work runs in a FastAPI `BackgroundTasks` job after the 202 is returned. Known limit: a
-  restart mid-job loses it (fixed in Phase 6 with a Postgres job queue).
+- In Phase 1 the work ran in a FastAPI `BackgroundTasks` job after the 202 (a restart lost it; fixed in
+  Phase 6 with a Postgres job queue, see below).
 - GitHub App auth: App JWT (RS256) → installation access token, cached until 5 minutes before expiry.
 - Dockerfile + `railway.json`; migrations run as the pre-deploy command `alembic upgrade head`.
 
@@ -160,14 +160,49 @@ mostly the model choosing a different category than the label. Next step is more
 Known limits: the diff is untrusted and injection resistance is not measured yet (Phase 5); a restart
 mid-job still loses it (Phase 6); run records are not unique per head SHA yet (Phase 6).
 
+## Phase 6 — Reliability
+
+What works now: a review is no longer lost when the server restarts, five quick pushes give one review
+on the newest commit, and a review is never posted twice.
+
+- **Queue**: a `jobs` table in the existing Postgres, no new infrastructure. The webhook saves the
+  delivery id, the review run and the job in **one transaction**, so a crash cannot record a delivery
+  without its job.
+- **Worker**: `python -m app.jobs.worker`, a separate process (a second Railway service from the same
+  image, config in `railway.worker.json`). It claims jobs with `SELECT ... FOR UPDATE SKIP LOCKED`
+  (committed at once; no transaction is held during a review), retries transient failures with
+  exponential backoff (30 s, 60 s, ...; 3 attempts), fails permanent ones (GitHub 404, model 400)
+  immediately, and requeues jobs whose worker died (10 minute lease). On SIGTERM it stops taking jobs,
+  lets the current one finish (30 s), otherwise puts it back without using an attempt.
+- **No stale reviews**: a run is unique per (repo, PR, head SHA). A newer push marks older in-flight
+  runs `superseded`; right before posting the job asks GitHub for the PR's current head and skips if it
+  moved.
+- **No duplicate reviews**: `posted_at` on the run, plus a hidden per-run marker in the review body that
+  a retry looks for on GitHub, which covers a crash between GitHub accepting the review and our write.
+- **Timeouts everywhere**: GitHub 5 s connect / 10 s read (20 s to post), Postgres connect 5 s and
+  statement 15 s, model 60 s per call, whole job 8 minutes. Idempotent GitHub reads retry on 5xx / 429 /
+  network errors; posting is never blindly retried.
+- **Failures are visible but quiet**: the run records a reason (`timeout`, `github`, `model`,
+  `internal`) and a short error built from the exception type and HTTP status only. After the final
+  failure the PR gets one static comment ("Review failed. Push a new commit to try again."), at most
+  once per run and never for a superseded run. Stack traces and exception text are not stored or logged.
+
+Tests: the full pipeline runs against mocked GitHub (retries, backoff, supersede, five rapid pushes,
+stale head, double-post guards, crash and shutdown recovery), plus 6 tests on a real Postgres in CI
+(8 threads claiming 40 jobs get each exactly once, a locked row is skipped, migrations match the models).
+
+Known limits: the worker polls every 2 s (no LISTEN/NOTIFY); there is no per-author rate limit; the
+migration deletes older duplicate runs of the same commit before adding the unique constraint.
+
 ## Architecture
 
 ```
 GitHub PR event
   -> POST /webhooks/github: verify HMAC -> filter event/action -> dedupe delivery id -> 202
-  -> background job: installation token -> fetch changed files -> filter -> parse/number lines
+     -> ONE transaction: delivery + review run + job (supersedes older runs of the PR)
+  -> worker (separate process): claim job -> installation token -> fetch changed files -> filter
      -> review_diff (LangGraph: limits -> parallel per-file LLM review) -> validate
-     -> post ONE review (event=COMMENT)
+     -> still the PR's head? not posted yet? -> post ONE review (event=COMMENT)
 ```
 
 Details and the planned data model are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

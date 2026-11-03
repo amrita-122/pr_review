@@ -537,3 +537,45 @@ def test_classified_message_never_contains_exception_text_or_urls() -> None:
     failure = classify(_status_error(404))
     assert "http" not in failure.message.lower().replace("github http", "")
     assert isinstance(failure, JobFailure) and classify(failure) is failure
+
+
+@respx.mock
+async def test_review_survives_a_worker_that_died_mid_job(
+    db_session: Session, enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kill the worker mid-review: after the lease expires the review is posted, exactly once."""
+    settings_env(monkeypatch, job_lease_seconds="-1")  # every running job counts as stale
+    event = make_event()
+    gh = Pipeline(event)
+    enqueue(event)
+    dead = worker.claim_job(db_session, "dead-worker", datetime.now(UTC))  # claimed, then killed
+    assert dead is not None and gh.reviews.call_count == 0
+
+    await drain()  # the restarted worker reaps the stale lease and does the work
+    assert gh.reviews.call_count == 1
+    job = job_of(db_session)
+    assert (job.status, job.attempts) == ("done", 2)
+    assert run_of(db_session).status == "ok"
+    await drain()
+    assert gh.reviews.call_count == 1
+
+
+@respx.mock
+async def test_worker_killed_after_github_accepted_the_review_does_not_double_post(
+    db_session: Session, enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings_env(monkeypatch, job_lease_seconds="-1")  # every running job counts as stale
+    event = make_event()
+    gh = Pipeline(event)
+    enqueue(event)
+    run_id = run_of(db_session).id
+    assert worker.claim_job(db_session, "dead-worker", datetime.now(UTC)) is not None
+    # GitHub has the review (with our marker) but the worker died before writing posted_at.
+    gh.reviews_list.mock(
+        return_value=httpx.Response(
+            200, json=[{"commit_id": event.head_sha, "body": f"x {review_marker(run_id)}"}]
+        )
+    )
+    await drain()
+    assert gh.reviews.call_count == 0
+    assert run_of(db_session).status == "ok"

@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 5 (code done; waiting on your review and decisions)**
+**Current phase: 6 (code done; needs the Railway worker service + sandbox check)**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -187,16 +187,19 @@ strict link rule, CORS case (needs a rerun after credits).
 Goal: no lost reviews, no duplicate reviews.
 Learn: database job queues · `SELECT … FOR UPDATE SKIP LOCKED` · transactions · graceful shutdown
 
-- [ ] 6.1 Unique (repo, pr_number, head_sha) on review_runs. A newer push marks older in-progress runs
+- [x] 6.1 Unique (repo, pr_number, head_sha) on review_runs. A newer push marks older in-progress runs
       superseded; a superseded run doesn't post.
-- [ ] 6.2 `jobs` table (id, kind, payload JSON, status, attempts, run_after, locked_at, last_error).
+- [x] 6.2 `jobs` table (id, kind, payload JSON, status, attempts, run_after, locked_at, last_error).
       The webhook inserts the job in the SAME transaction as the delivery record.
-- [ ] 6.3 Worker (app/jobs/worker.py, a separate process): claims jobs with FOR UPDATE SKIP LOCKED,
+- [x] 6.3 Worker (app/jobs/worker.py, a separate process): claims jobs with FOR UPDATE SKIP LOCKED,
       retries with backoff, marks failed after max attempts. Jobs locked too long go back to the queue.
       Remove BackgroundTasks. Update the ADR.
-- [ ] 6.4 Timeouts on every external call; failures recorded on the run with a reason.
-- [ ] 6.5 Final failure → one short comment ("review failed; push again to retry"), never a stack trace.
+- [x] 6.4 Timeouts on every external call; failures recorded on the run with a reason.
+- [x] 6.5 Final failure → one short comment ("review failed; push again to retry"), never a stack trace.
 **Done when:** killing the server mid-review still produces the review after restart, and 5 quick pushes give one review on the latest commit.
+Proven in tests (SQLite fakes + real Postgres): `test_review_survives_a_worker_that_died_mid_job`,
+`test_five_quick_pushes_give_one_review_on_the_latest_commit`, 8-thread claim test. Still to do on Railway:
+create the worker service (railway.worker.json) and repeat both checks on a sandbox PR.
 
 ---
 ## Phase 7 — Second agent + cost routing
