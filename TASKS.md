@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 4**
+**Current phase: 5**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -154,9 +154,8 @@ Learn: tracing · structured logging · golden datasets · precision / recall ·
       .github/workflows/evals.yml (Claude Code may scaffold): runs only on PRs touching
       app/review/** or evals/**; API key from a repository secret; fails if any metric is under its threshold.
 **Done when:** README shows baseline numbers, and a PR with a deliberately worse prompt is blocked by the eval workflow.
-Status: baseline and v2 numbers are in README; the gate fails locally on the v1 prompt (`--check` exits 1).
-Still to do for the CI proof: add the `ANTHROPIC_API_KEY` repo secret, push the branch, and open a draft
-PR that swaps in a worse prompt to see `Evals` go red (then close it). Move "Current phase" to 5 after that.
+Proven: PR #12 passes Evals; a throwaway PR with a deliberately noisy prompt failed it
+(precision 62.5% < 0.85, `GATE FAILED`) and was closed.
 
 ---
 ## Phase 5 — Prompt-injection hardening (the differentiator)

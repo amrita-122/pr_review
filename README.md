@@ -135,7 +135,8 @@ JSON logs, a LangSmith trace, and a number for how good the reviewer is.
   `--case <id>`, `--max-cost 3`, `--check`). Results are saved in `evals/results/`.
 - **Gate**: `.github/workflows/evals.yml` runs on PRs touching `app/review/**` or `evals/**` and fails
   when mean precision or recall drops under `evals/thresholds.json` (0.85 / 0.85) or any case errors.
-  It needs an `ANTHROPIC_API_KEY` repository secret.
+  It needs an `ANTHROPIC_API_KEY` repository secret. Proof: a PR with a deliberately noisy prompt
+  failed the gate (precision 62.5% against a 0.85 minimum).
 
 Results (3 runs each, `claude-sonnet-5-5`, 31 cases, about $0.55 per 3 runs):
 
