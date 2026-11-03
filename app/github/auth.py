@@ -2,12 +2,11 @@ import base64
 import time
 from datetime import UTC, datetime
 
-import httpx
 import jwt
 
 from app.config import get_settings
+from app.github.http import GITHUB_API, github_client
 
-GITHUB_API = "https://api.github.com"
 REFRESH_MARGIN_SECONDS = 300
 
 # installation_id -> (token, expires_at)
@@ -34,7 +33,7 @@ async def get_installation_token(installation_id: int) -> str:
             return token
 
     app_jwt = build_app_jwt(get_settings().github_app_id, _load_private_key())
-    async with httpx.AsyncClient(base_url=GITHUB_API, timeout=10) as client:
+    async with github_client() as client:
         response = await client.post(
             f"/app/installations/{installation_id}/access_tokens",
             headers={
@@ -48,3 +47,11 @@ async def get_installation_token(installation_id: int) -> str:
     token = data["token"]
     _token_cache[installation_id] = (token, datetime.fromisoformat(data["expires_at"]))
     return str(token)
+
+
+def invalidate_installation_token(installation_id: int) -> None:
+    """Forget a cached token (e.g. GitHub answered 401) so the next call fetches a new one."""
+    _token_cache.pop(installation_id, None)
+
+
+__all__ = ["GITHUB_API", "get_installation_token", "invalidate_installation_token"]
