@@ -74,6 +74,7 @@ async def run_case(
         findings=outcome.findings,
         raw_count=outcome.raw_count,
         dropped_count=len(outcome.dropped),
+        dropped_findings=[finding for finding, _ in outcome.dropped],
         errored=case.path not in outcome.reviewed,  # failed or skipped = counted as a failure
         latency_s=latency,
         cost_usd=cost,
@@ -173,6 +174,10 @@ def _result_path(prompt_version: str, out_dir: Path) -> Path:
 
 async def amain(args: argparse.Namespace) -> int:
     settings = get_settings()
+    if args.suite == "redteam":
+        from evals.redteam_run import amain_redteam  # lazy: it imports this module
+
+        return await amain_redteam(args, settings)
     prompt_version = args.prompt_version or settings.prompt_version
     cases = load_cases()
     if args.case:
@@ -238,6 +243,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the reviewer on the golden set.")
     parser.add_argument("--runs", type=int, default=1, help="repeat the whole set N times")
     parser.add_argument("--prompt-version", help="e.g. security_v1 (default: PROMPT_VERSION)")
+    parser.add_argument(
+        "--suite", choices=("golden", "redteam"), default="golden", help="which case set to run"
+    )
+    parser.add_argument("--label", help="redteam only: name for the result file, e.g. baseline")
     parser.add_argument("--case", action="append", help="only this case id (repeatable)")
     parser.add_argument(
         "--max-cost",

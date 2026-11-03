@@ -23,6 +23,9 @@ class CaseResult:
     cost_usd: Decimal
     tokens_in: int = 0
     tokens_out: int = 0
+    # Findings the validator removed. Red-team scoring needs them: "did the MODEL emit attacker
+    # text" is a different question from "would it have been POSTED".
+    dropped_findings: list[Finding] = field(default_factory=list)
 
 
 @dataclass
