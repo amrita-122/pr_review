@@ -64,10 +64,26 @@ def test_mention_inside_code_is_allowed_and_email_is_not_a_mention() -> None:
 
 
 @pytest.mark.parametrize(
-    "text", ["<script>x</script>", "a <img src=x> b", "<!-- hidden -->", "</div>", "< b>bold"]
+    "text",
+    [
+        "<script>x</script>",
+        "a <img src=x> b",
+        "<!-- hidden -->",
+        "<a href=x>go</a>",
+        "<IFRAME src=x>",
+        "< details >",
+        "</script>",
+    ],
 )
-def test_html_is_rejected(text: str) -> None:
+def test_dangerous_html_is_rejected(text: str) -> None:
     assert policy_violation(_f(rationale=text)) == "output policy: html"
+
+
+def test_harmless_tags_in_a_code_sample_are_allowed() -> None:
+    # A real finding quoted this in its suggestion; dropping it cost recall on the golden set.
+    sample = 'Use render_template_string("<h1>Hello {{ name }}</h1>", name=name).'
+    assert policy_violation(_f(rationale="ok", suggestion=sample)) is None
+    assert policy_violation(_f(rationale="a <br> and an <abbr> and <article>")) is None
 
 
 def test_html_in_code_and_comparisons_are_allowed() -> None:

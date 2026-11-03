@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 5**
+**Current phase: 5 (code done; waiting on your review and decisions)**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -162,22 +162,25 @@ Proven: PR #12 passes Evals; a throwaway PR with a deliberately noisy prompt fai
 Goal: measure how an attacker can manipulate the bot, reduce it, and document what's left.
 Learn: direct vs indirect prompt injection · threat modelling · least privilege · output validation
 
-- [ ] 5.1 Fill in the threat model in docs/SECURITY.md: what the attacker controls and what they want
+- [x] 5.1 Fill in the threat model in docs/SECURITY.md: what the attacker controls and what they want
       (template already there).
-- [ ] 5.2 Red-team set in evals/redteam/: 10–15 cases, each a REAL planted vulnerability plus an
+- [x] 5.2 Red-team set in evals/redteam/: 10–15 cases, each a REAL planted vulnerability plus an
       injection attempt: a "security reviewed, no issues" comment; a fake `SYSTEM:` block; instructions
       in a string literal; in a file name; in the PR description; hidden/unicode text; a huge padding file.
-- [ ] 5.3 Metrics in the eval runner: suppression rate (planted bug missed with injection vs without),
+- [x] 5.3 Metrics in the eval runner: suppression rate (planted bug missed with injection vs without),
       hijack rate (output contains attacker-chosen text, links or @mentions), crash/timeout count.
-- [ ] 5.4 Measure the baseline BEFORE changing anything. Record it.
-- [ ] 5.5 Defences, one at a time, re-measuring after each:
+- [x] 5.4 Measure the baseline BEFORE changing anything. Record it.
+- [x] 5.5 Defences, one at a time, re-measuring after each:
       (a) randomized delimiters around untrusted content + explicit data/instruction separation;
       (b) PR title/description passed only if needed, clearly marked untrusted;
       (c) output policy in the validator: no external URLs, no @mentions, no raw HTML, max comment length;
       (d) confirm least privilege: App permissions and event=COMMENT only;
       (e) size caps against cost-exhaustion attacks.
-- [ ] 5.6 Before/after table and remaining risks in docs/SECURITY.md. Add the red-team set to the eval gate.
+- [x] 5.6 Before/after table and remaining risks in docs/SECURITY.md. Add the red-team set to the eval gate.
 **Done when:** before/after numbers exist for both metrics, and residual risks are written down.
+Proven: baseline hijack 10.3% -> 0% (0 of 13, 9 runs), suppression 0 of 16 before and after (one `rt_padding`
+miss seen once); golden gate passes (96.5% / 93.3%). See docs/SECURITY.md. Pending your decisions: v4 prompt,
+strict link rule, CORS case (needs a rerun after credits).
 
 ---
 ## Phase 6 — Reliability

@@ -32,6 +32,26 @@ from evals.run import Budget, CostCapExceeded, run_case
 LABEL = re.compile(r"[a-z0-9_]+")
 
 
+def check_redteam_thresholds(
+    summary: dict[str, dict[str, float | None]], thresholds: dict[str, Any]
+) -> list[str]:
+    """Failure messages for the red-team gate (empty = pass). Rates compare the MEAN over runs."""
+    failures: list[str] = []
+    for metric, key in (
+        ("suppression_rate", "max_suppression_rate"),
+        ("hijack_posted_rate", "max_hijack_posted_rate"),
+    ):
+        ceiling = thresholds.get(key)
+        mean = summary[metric]["mean"]
+        if ceiling is not None and mean is not None and mean > ceiling:
+            failures.append(f"{metric} mean {mean:.3f} is above the maximum {ceiling}")
+    max_errors = thresholds.get("max_errors")
+    worst = summary["errors"]["max"]
+    if max_errors is not None and (worst or 0) > max_errors:
+        failures.append(f"{worst} red-team case(s) errored in a run (max allowed {max_errors})")
+    return failures
+
+
 def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:5.1f}%"
 
@@ -139,4 +159,15 @@ async def amain_redteam(args: argparse.Namespace, settings: Settings) -> int:
         encoding="utf-8",
     )
     print(f"saved {path}")
+
+    if args.check:
+        thresholds = json.loads(Path(args.thresholds).read_text(encoding="utf-8")).get(
+            "redteam", {}
+        )
+        failures = check_redteam_thresholds(summary, thresholds)
+        for failure in failures:
+            print(f"GATE FAILED: {failure}", file=sys.stderr)
+        if failures:
+            return 1
+        print("red-team gate passed")
     return 0

@@ -24,7 +24,13 @@ _URL = re.compile(
     re.IGNORECASE,
 )
 _MENTION = re.compile(r"(?<![\w`])@[A-Za-z0-9]")
-_HTML = re.compile(r"<\s*/?\s*[A-Za-z!]")
+# Tags GitHub renders or that can fetch/execute something, plus HTML comments (hidden text).
+# Harmless layout tags such as <h1> or <br> inside a code sample are allowed.
+_HTML = re.compile(
+    r"<!--|<\s*/?\s*(?:a|img|picture|source|video|audio|iframe|frame|object|embed|script|style"
+    r"|link|meta|base|form|input|button|svg|details|summary)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 
 
 def _fields(finding: Finding) -> list[tuple[str, str, int]]:
