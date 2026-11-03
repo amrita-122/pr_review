@@ -66,7 +66,8 @@ def _record(action: str, fn: Callable[[Session], None]) -> None:
 
 
 def _bind_context(payload: ReviewJobPayload) -> None:
-    structlog.contextvars.clear_contextvars()
+    # Adds to the worker's context (job_id) instead of replacing it: the job runs in its own task,
+    # which got a copy, so nothing leaks into the next job.
     structlog.contextvars.bind_contextvars(
         run_id=payload.run_id,
         repo=payload.repo_full_name,

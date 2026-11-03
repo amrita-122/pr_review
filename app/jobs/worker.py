@@ -278,9 +278,11 @@ async def run_worker(settings: Settings, stop: asyncio.Event, *, once: bool = Fa
                 await asyncio.wait_for(stop.wait(), timeout=settings.job_poll_seconds)
             continue
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(job_id=claimed.id)
+        structlog.contextvars.bind_contextvars(job_id=claimed.id)  # on every line of this job
+        logger.info("job_started", kind=claimed.kind, attempt=claimed.attempts)
         outcome = await run_claimed(claimed, settings, stop)
-        logger.info("job_settled", job_id=claimed.id, outcome=outcome)
+        logger.info("job_settled", outcome=outcome)
+        structlog.contextvars.clear_contextvars()  # idle-loop lines must not carry the last job id
     logger.info("worker_stopped", worker_id=worker_id)
 
 
