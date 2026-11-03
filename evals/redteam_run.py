@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings
-from app.review.cost import Prices
 from app.review.graph import ReviewLimits
 from app.review.llm import Reviewer, build_reviewers
 from evals.metrics import summarize
@@ -66,7 +65,7 @@ async def run_redteam_once(
     from evals.run import CASE_CONCURRENCY
 
     limits = ReviewLimits.from_settings(settings)
-    prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
+    prices = settings.price_table
     sem = asyncio.Semaphore(CASE_CONCURRENCY)
 
     async def one(case: RedTeamCase) -> RedTeamResult:

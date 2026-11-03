@@ -13,8 +13,9 @@ from langgraph.types import Send
 from app.config import Settings
 from app.diff.parse import ParsedFile
 from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
-from app.review.llm import Reviewer
+from app.review.llm import Reviewer, reviewer_key
 from app.review.schemas import Agent, Finding, ReviewFinding
+from app.review.triage import Risk, Triager
 from app.review.validate import Dropped, partition_findings
 
 logger = structlog.get_logger()
@@ -50,11 +51,15 @@ class ReviewOutcome:
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
     dropped: list[Dropped] = field(default_factory=list)  # validator drops, with reason
     raw_count: int = 0  # findings the model produced, before validation
+    risk: dict[str, str] = field(
+        default_factory=dict
+    )  # triage verdict per file (empty = no triage)
 
 
 class ReviewState(TypedDict):
     files: dict[str, ParsedFile]  # input: everything we were handed
     to_review: dict[str, ParsedFile]  # after limits
+    risk: dict[str, str]  # triage: path -> "high" | "low" (empty when triage is off)
     limit_skipped: list[tuple[str, str]]
     findings: Annotated[list[Finding], operator.add]  # reducer: parallel branches append
     errors: Annotated[list[tuple[str, str]], operator.add]  # (path, reason) for failed files
@@ -66,6 +71,7 @@ class FileTask(TypedDict):
     path: str
     numbered: str
     agent: str  # which reviewer runs on this file: "security" or "quality"
+    tier: str  # "high" (full reviewer) or "low" (cheap reviewer); from triage, default "high"
 
 
 def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing is too strict
@@ -89,13 +95,35 @@ def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing 
     return prepare
 
 
+def _triage(triager: Triager | None) -> Any:
+    async def triage(state: ReviewState) -> dict[str, Any]:
+        if triager is None or not state["to_review"]:
+            return {"risk": {}}
+        try:
+            risk: dict[str, Risk] = await triager(state["to_review"])
+        except Exception as exc:  # triage is an optimisation: if it breaks, review everything fully
+            logger.warning("triage_failed", error=type(exc).__name__)
+            return {"risk": {}}
+        return {"risk": dict(risk)}
+
+    return triage
+
+
 def _fan_out(agents: list[str]) -> Any:
     def fan_out(state: ReviewState) -> list[Send] | str:
         """One `Send` per (file, agent): LangGraph runs these review_file calls in parallel."""
         if not state["to_review"]:
             return "validate"
         return [
-            Send("review_file", FileTask(path=path, numbered=parsed.numbered, agent=agent))
+            Send(
+                "review_file",
+                FileTask(
+                    path=path,
+                    numbered=parsed.numbered,
+                    agent=agent,
+                    tier=state["risk"].get(path, "high"),  # no verdict = the full reviewer
+                ),
+            )
             for path, parsed in state["to_review"].items()
             for agent in agents
         ]
@@ -108,8 +136,10 @@ def _review_file(
 ) -> Any:  # node callable; takes a FileTask, not the state
     async def review_file(task: FileTask) -> dict[str, Any]:
         agent = task["agent"]
+        # Cheap reviewer for low-risk files when one is configured; otherwise the full one.
+        reviewer = reviewers.get(reviewer_key(agent, task["tier"])) or reviewers[agent]
         try:
-            findings = await reviewers[agent](task["path"], task["numbered"])
+            findings = await reviewer(task["path"], task["numbered"])
         except Exception as exc:  # one bad file must never fail the whole run
             logger.warning(
                 "file_review_failed", file=task["path"], agent=agent, error=type(exc).__name__
@@ -148,13 +178,20 @@ def _validate(limits: ReviewLimits) -> Any:
     return validate
 
 
-def build_graph(reviewers: Mapping[str, Reviewer], limits: ReviewLimits) -> Any:
+def build_graph(
+    reviewers: Mapping[str, Reviewer], limits: ReviewLimits, triager: Triager | None = None
+) -> Any:
     graph = StateGraph(ReviewState)
     graph.add_node("prepare", _prepare(limits))
+    graph.add_node("triage", _triage(triager))
     graph.add_node("review_file", _review_file(reviewers, limits))
     graph.add_node("validate", _validate(limits))
     graph.add_edge(START, "prepare")
-    graph.add_conditional_edges("prepare", _fan_out(list(reviewers)), ["review_file", "validate"])
+    graph.add_edge("prepare", "triage")
+    agents = [
+        name for name in reviewers if ":" not in name
+    ]  # "security:low" is a tier, not an agent
+    graph.add_conditional_edges("triage", _fan_out(agents), ["review_file", "validate"])
     graph.add_edge("review_file", "validate")
     graph.add_edge("validate", END)
     return graph.compile()
@@ -165,6 +202,7 @@ async def review_diff(
     reviewers: Reviewer | Mapping[str, Reviewer],
     limits: ReviewLimits,
     *,
+    triager: Triager | None = None,
     run_name: str | None = None,
     metadata: Mapping[str, str] | None = None,
     callbacks: list[BaseCallbackHandler] | None = None,
@@ -176,10 +214,11 @@ async def review_diff(
     the run (tracing, token counting).
     """
     by_agent = {Agent.SECURITY.value: reviewers} if callable(reviewers) else dict(reviewers)
-    app = build_graph(by_agent, limits)
+    app = build_graph(by_agent, limits, triager)
     initial: ReviewState = {
         "files": dict(files),
         "to_review": {},
+        "risk": {},
         "limit_skipped": [],
         "findings": [],
         "errors": [],
@@ -204,4 +243,5 @@ async def review_diff(
         skipped=final["limit_skipped"] + final["errors"],
         dropped=final["dropped"],
         raw_count=len(final["findings"]),
+        risk=final["risk"],
     )

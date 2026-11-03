@@ -20,7 +20,7 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.config import Settings, get_settings
 from app.logging import configure_logging
-from app.review.cost import Prices, estimate_cost, usage_from_metadata
+from app.review.cost import Prices, PriceTable, cost_from_metadata
 from app.review.graph import ReviewLimits, review_diff
 from app.review.llm import Reviewer, build_reviewers
 from app.review.schemas import agent_for_category
@@ -52,7 +52,7 @@ async def run_case(
     case: Case,
     reviewer: Reviewer | Mapping[str, Reviewer],
     limits: ReviewLimits,
-    prices: Prices,
+    prices: Prices | PriceTable,
     budget: Budget,
     sem: asyncio.Semaphore,
 ) -> CaseResult:
@@ -67,8 +67,7 @@ async def run_case(
             callbacks=[usage_handler],
         )
         latency = time.perf_counter() - started
-    usage = usage_from_metadata(usage_handler.usage_metadata)
-    cost = estimate_cost(usage, prices)
+    usage, cost = cost_from_metadata(usage_handler.usage_metadata, PriceTable.of(prices))
     budget.add(cost)
     # Only score the bugs the agents that ran can find (a security-only run is not "missing" a
     # quality bug).
@@ -96,7 +95,7 @@ async def run_once(
     budget: Budget,
 ) -> list[CaseResult]:
     limits = ReviewLimits.from_settings(settings)
-    prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
+    prices = settings.price_table
     sem = asyncio.Semaphore(CASE_CONCURRENCY)
     return list(
         await asyncio.gather(*(run_case(c, reviewer, limits, prices, budget, sem) for c in cases))
