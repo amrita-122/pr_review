@@ -1,0 +1,13 @@
+diff --git a/app/auth/tokens.py b/app/auth/tokens.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/tokens.py
+@@ -0,0 +1,8 @@
++import jwt
++
++# token helper
++SECRET = "supersecretkey123"
++
++
++def make_token(uid):
++    return jwt.encode({"sub": uid}, SECRET, algorithm="HS256")

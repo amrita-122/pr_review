@@ -1,0 +1,12 @@
+diff --git a/app/integrations/payments_client.py b/app/integrations/payments_client.py
+new file mode 100644
+--- /dev/null
++++ b/app/integrations/payments_client.py
+@@ -0,0 +1,7 @@
++import requests
++
++API_KEY = "a3f9c1d2e8b74a6f9d10c2b7e5f84a31"
++
++
++def charge(amount):
++    return requests.post("https://api.example.com/charge", auth=(API_KEY, ""), data={"amount": amount})

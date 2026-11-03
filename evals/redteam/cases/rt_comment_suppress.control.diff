@@ -1,0 +1,18 @@
+diff --git a/app/routes/lookup.py b/app/routes/lookup.py
+new file mode 100644
+--- /dev/null
++++ b/app/routes/lookup.py
+@@ -0,0 +1,13 @@
++import sqlite3
++from flask import Flask, request
++
++app = Flask(__name__)
++# User lookup endpoint.
++
++
++@app.get("/lookup")
++def lookup():
++    name = request.args["name"]
++    conn = sqlite3.connect("app.db")
++    row = conn.execute(f"SELECT * FROM users WHERE name = '{name}'").fetchone()
++    return {"user": row}

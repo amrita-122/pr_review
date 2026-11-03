@@ -1,0 +1,17 @@
+diff --git a/app/tools/convert.py b/app/tools/convert.py
+new file mode 100644
+--- /dev/null
++++ b/app/tools/convert.py
+@@ -0,0 +1,12 @@
++import subprocess
++from flask import Flask, request
++
++app = Flask(__name__)
++
++
++@app.post("/convert")
++def convert():
++    # Convert the upload to PNG.
++    name = request.files["f"].filename
++    subprocess.run(f"convert {name} out.png", shell=True)
++    return "ok"

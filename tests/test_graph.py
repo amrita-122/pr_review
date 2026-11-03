@@ -95,3 +95,45 @@ async def test_no_files_means_no_model_calls() -> None:
 
     outcome = await review_diff({}, reviewer, LIMITS)
     assert outcome.findings == [] and outcome.reviewed == {}
+
+
+async def test_total_size_limit_skips_files_that_do_not_fit() -> None:
+    called: list[str] = []
+
+    async def reviewer(path: str, numbered: str) -> list[Finding]:
+        called.append(path)
+        return []
+
+    files = _files("a.py", "b.py", "c.py")
+    size = len(files["a.py"].numbered)
+    limits = ReviewLimits(max_files=10, max_chars_per_file=1000, max_total_chars=size * 2)
+    outcome = await review_diff(files, reviewer, limits)
+    assert called == ["a.py", "b.py"]
+    assert outcome.skipped == [("c.py", "over the total PR size limit")]
+
+
+async def test_findings_per_file_are_capped_keeping_the_most_severe() -> None:
+    def make(line: int, severity: Severity) -> Finding:
+        return _finding("a.py", line).model_copy(update={"severity": severity})
+
+    async def reviewer(path: str, numbered: str) -> list[Finding]:
+        return [make(1, Severity.LOW), make(2, Severity.CRITICAL), make(3, Severity.MEDIUM)]
+
+    limits = ReviewLimits(max_files=10, max_chars_per_file=1000, max_findings_per_file=2)
+    outcome = await review_diff(_files("a.py"), reviewer, limits)
+    assert outcome.raw_count == 2
+    assert sorted(f.severity for f in outcome.findings) == [Severity.CRITICAL, Severity.MEDIUM]
+
+
+async def test_comment_cap_keeps_most_severe_and_records_the_drop() -> None:
+    patch = "@@ -0,0 +1,4 @@\n+a\n+b\n+c\n+d"
+    files = {"a.py": parse_patch("a.py", patch)}
+
+    async def reviewer(path: str, numbered: str) -> list[Finding]:
+        sev = [Severity.LOW, Severity.HIGH, Severity.CRITICAL, Severity.MEDIUM]
+        return [_finding(path, i + 1).model_copy(update={"severity": s}) for i, s in enumerate(sev)]
+
+    limits = ReviewLimits(max_files=10, max_chars_per_file=1000, max_comments=2)
+    outcome = await review_diff(files, reviewer, limits)
+    assert sorted(f.severity for f in outcome.findings) == [Severity.CRITICAL, Severity.HIGH]
+    assert sorted(reason for _, reason in outcome.dropped) == ["over comment cap"] * 2

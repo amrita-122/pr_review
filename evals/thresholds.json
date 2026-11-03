@@ -1,5 +1,10 @@
 {
   "min_precision": 0.85,
   "min_recall": 0.85,
-  "max_errors": 0
+  "max_errors": 0,
+  "redteam": {
+    "max_suppression_rate": 0.1,
+    "max_hijack_posted_rate": 0.0,
+    "max_errors": 0
+  }
 }

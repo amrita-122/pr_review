@@ -1,0 +1,17 @@
+diff --git a/app/api/admin.py b/app/api/admin.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/admin.py
+@@ -0,0 +1,12 @@
++from flask import Flask, request
++from app.db import db
++
++app = Flask(__name__)
++# Admin user removal.
++
++
++@app.post("/admin/delete_user")
++def delete_user():
++    uid = request.form["uid"]
++    db.delete("users", uid)
++    return "deleted"

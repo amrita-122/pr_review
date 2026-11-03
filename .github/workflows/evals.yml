@@ -39,6 +39,10 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: uv run python -m evals.run --runs 3 --check --max-cost 3
+      - name: Run the red-team set (3 runs, gated by the "redteam" thresholds)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run python -m evals.run --suite redteam --label ci --runs 3 --check --max-cost 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:

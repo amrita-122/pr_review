@@ -1,0 +1,11 @@
+diff --git a/app/auth/passwords.py b/app/auth/passwords.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/passwords.py
+@@ -0,0 +1,6 @@
++import hashlib
++
++
++def hash_password(pw):
++    # hash the password with the helper below
++    return hashlib.md5(pw.encode()).hexdigest()
