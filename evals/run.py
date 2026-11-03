@@ -10,7 +10,7 @@ import asyncio
 import json
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -22,9 +22,10 @@ from app.config import Settings, get_settings
 from app.logging import configure_logging
 from app.review.cost import Prices, PriceTable, cost_from_metadata
 from app.review.graph import ReviewLimits, review_diff
-from app.review.llm import Reviewer, build_reviewers
+from app.review.llm import Reviewer, build_review_setup
 from app.review.schemas import agent_for_category
-from evals.dataset import Case, load_cases
+from app.review.triage import Triager
+from evals.dataset import Case, PRCase, load_cases, load_pr_cases
 from evals.metrics import CaseResult, match_case, score_run, summarize
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -49,20 +50,23 @@ class Budget:
 
 
 async def run_case(
-    case: Case,
+    case: Case | PRCase,
     reviewer: Reviewer | Mapping[str, Reviewer],
     limits: ReviewLimits,
     prices: Prices | PriceTable,
     budget: Budget,
     sem: asyncio.Semaphore,
+    triager: Triager | None = None,
 ) -> CaseResult:
+    files = case.files if isinstance(case, PRCase) else {case.path: case.parsed}
     usage_handler = UsageMetadataCallbackHandler()
     async with sem:
         started = time.perf_counter()
         outcome = await review_diff(
-            {case.path: case.parsed},
+            files,
             reviewer,
             limits,
+            triager=triager,
             run_name=f"eval {case.case_id}",
             callbacks=[usage_handler],
         )
@@ -80,25 +84,30 @@ async def run_case(
         raw_count=outcome.raw_count,
         dropped_count=len(outcome.dropped),
         dropped_findings=[finding for finding, _ in outcome.dropped],
-        errored=case.path not in outcome.reviewed,  # failed or skipped = counted as a failure
+        errored=set(files) - set(outcome.reviewed) != set(),  # any file failed or was skipped
         latency_s=latency,
         cost_usd=cost,
         tokens_in=usage.tokens_in,
         tokens_out=usage.tokens_out,
+        files_total=len(files),
+        files_low=sum(1 for risk in outcome.risk.values() if risk == "low"),
     )
 
 
 async def run_once(
-    cases: list[Case],
+    cases: Sequence[Case | PRCase],
     reviewer: Reviewer | Mapping[str, Reviewer],
     settings: Settings,
     budget: Budget,
+    triager: Triager | None = None,
 ) -> list[CaseResult]:
     limits = ReviewLimits.from_settings(settings)
     prices = settings.price_table
     sem = asyncio.Semaphore(CASE_CONCURRENCY)
     return list(
-        await asyncio.gather(*(run_case(c, reviewer, limits, prices, budget, sem) for c in cases))
+        await asyncio.gather(
+            *(run_case(c, reviewer, limits, prices, budget, sem, triager) for c in cases)
+        )
     )
 
 
@@ -162,6 +171,17 @@ def print_report(
     for metric in ("precision", "recall"):
         s = summary[metric]
         print(f"{metric}: mean {_pct(s['mean'])} (min {_pct(s['min'])}, max {_pct(s['max'])})")
+    last = runs[-1]
+    if last["files_total"]:
+        share = last["files_low"] / last["files_total"]
+        routed = f"{last['files_low']}/{last['files_total']} ({_pct(share)})"
+        print(f"\nfiles routed to the cheap model by triage: {routed}")
+    print("\nper agent (last run):")
+    for agent, c in last["per_agent"].items():
+        counts = f"tp={c['tp']} fp={c['fp']} fn={c['fn']}"
+        print(
+            f"  {agent:<9} precision {_pct(c['precision'])}  recall {_pct(c['recall'])}  ({counts})"
+        )
     print("\nper category (last run):")
     for cat, c in runs[-1]["per_category"].items():
         counts = f"tp={c['tp']} fp={c['fp']} fn={c['fn']}"
@@ -176,6 +196,14 @@ def _agents_arg(value: str | None, *, default: str) -> list[str]:
     if not names or set(names) - {"security", "quality"}:
         raise SystemExit(f"--agents must list security and/or quality, got {value!r}")
     return list(dict.fromkeys(names))
+
+
+def _triage_arg(value: str | None, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if value not in ("on", "off"):
+        raise SystemExit(f"--triage must be on or off, got {value!r}")
+    return value == "on"
 
 
 def _result_path(prompt_version: str, out_dir: Path) -> Path:
@@ -195,7 +223,10 @@ async def amain(args: argparse.Namespace) -> int:
 
         return await amain_redteam(args, settings)
     prompt_version = args.prompt_version or settings.prompt_version
-    cases = load_cases()
+    cases: list[Case | PRCase] = list(load_pr_cases() if args.suite == "pr" else load_cases())
+    if args.suite == "pr" and not cases:
+        print("no multi-file cases in evals/data/prs/ yet", file=sys.stderr)
+        return 2
     if args.case:
         unknown = set(args.case) - {c.case_id for c in cases}
         if unknown:
@@ -203,14 +234,18 @@ async def amain(args: argparse.Namespace) -> int:
             return 2
         cases = [c for c in cases if c.case_id in set(args.case)]
     agents = _agents_arg(args.agents, default="security")
-    reviewer = build_reviewers(settings, agents=agents, security_version=prompt_version)
+    triage = _triage_arg(args.triage, default=settings.triage_enabled)
+    setup = build_review_setup(
+        settings, agents=agents, security_version=prompt_version, triage=triage
+    )
+    reviewer, triager = setup.reviewers, setup.triager
     budget = Budget(Decimal(str(args.max_cost)))
 
     runs: list[dict[str, Any]] = []
     details: list[list[dict[str, Any]]] = []
     try:
         for _ in range(args.runs):
-            results = await run_once(cases, reviewer, settings, budget)
+            results = await run_once(cases, reviewer, settings, budget, triager)
             runs.append(score_run(results))
             details.append(case_details(results))
     except CostCapExceeded as exc:
@@ -229,6 +264,9 @@ async def amain(args: argparse.Namespace) -> int:
     path.write_text(
         json.dumps(
             {
+                "suite": args.suite,
+                "agents": agents,
+                "triage": triage,
                 "prompt_version": prompt_version,
                 "model": settings.model_review,
                 "date": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -261,7 +299,14 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=1, help="repeat the whole set N times")
     parser.add_argument("--prompt-version", help="e.g. security_v1 (default: PROMPT_VERSION)")
     parser.add_argument(
-        "--suite", choices=("golden", "redteam"), default="golden", help="which case set to run"
+        "--suite",
+        choices=("golden", "pr", "redteam"),
+        default="golden",
+        help="golden = single-file cases, pr = multi-file pull requests, redteam = injection pairs",
+    )
+    parser.add_argument(
+        "--triage",
+        help="on | off: route low-risk files to the cheap model (default: TRIAGE_ENABLED)",
     )
     parser.add_argument("--label", help="redteam only: name for the result file, e.g. baseline")
     parser.add_argument(

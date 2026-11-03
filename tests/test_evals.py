@@ -165,3 +165,61 @@ async def test_run_case_scores_only_the_bugs_the_running_agents_can_find() -> No
     )
     assert [e.category for e in security_only.expected] == [Category.INJECTION]
     assert {e.category for e in both.expected} == {Category.INJECTION, Category.RESOURCE_LEAK}
+
+
+def _pr_dir(tmp_path, expected_rows: list[str]):  # type: ignore[no-untyped-def]
+    (tmp_path / "cases").mkdir()
+    pr = tmp_path / "prs" / "pr_demo"
+    pr.mkdir(parents=True)
+    for name, body in (("a", "x = 1"), ("b", "y = 2")):
+        (pr / f"{name}.diff").write_text(
+            f"diff --git a/{name}.py b/{name}.py\n--- /dev/null\n+++ b/{name}.py\n"
+            f"@@ -0,0 +1,1 @@\n+{body}\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "expected.jsonl").write_text("\n".join(expected_rows) + "\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_multi_file_pr_cases_load_with_their_labels(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from evals.dataset import load_pr_cases
+
+    row = (
+        '{"case_id": "pr_demo", "file": "b.py", "line_start": 1, "line_end": 1,'
+        ' "category": "injection"}'
+    )
+    (case,) = load_pr_cases(_pr_dir(tmp_path, [row]))
+    assert case.case_id == "pr_demo" and set(case.files) == {"a.py", "b.py"}
+    assert [e.file for e in case.expected] == ["b.py"]
+
+
+def test_pr_case_label_for_a_file_that_is_not_in_the_pr_is_rejected(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from evals.dataset import load_pr_cases
+
+    row = (
+        '{"case_id": "pr_demo", "file": "nope.py", "line_start": 1, "line_end": 1,'
+        ' "category": "injection"}'
+    )
+    with pytest.raises(ValueError, match="unknown file"):
+        load_pr_cases(_pr_dir(tmp_path, [row]))
+
+
+def test_single_file_loader_ignores_pr_labels_and_there_are_no_pr_cases_yet() -> None:
+    from evals.dataset import load_pr_cases
+
+    assert load_pr_cases() == []  # you add evals/data/prs/<id>/*.diff by hand
+
+
+def test_score_run_reports_precision_and_recall_per_agent() -> None:
+    results = [
+        _result([_exp(10, Category.INJECTION), _exp(5, Category.BUG)], [_find(10), _find(99)]),
+    ]
+    m = score_run(results)
+    per_agent = m["per_agent"]
+    assert per_agent["security"]["tp"] == 1 and per_agent["security"]["fp"] == 1  # type: ignore[index]
+    assert per_agent["quality"]["fn"] == 1 and per_agent["quality"]["recall"] == 0.0  # type: ignore[index]
+
+
+def test_score_run_counts_files_routed_to_the_cheap_model() -> None:
+    m = score_run([_result([], [], files_total=4, files_low=3), _result([], [], files_total=2)])
+    assert (m["files_total"], m["files_low"]) == (6, 3)
