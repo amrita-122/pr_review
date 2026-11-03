@@ -40,5 +40,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
-    # httpx logs full request URLs at INFO; keep them out of the logs.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # HTTP clients log every request URL at INFO; keep that out of the logs. The environment ships
+    # both httpx and httpx2, so silence each client and its transport.
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
+        logging.getLogger(name).setLevel(logging.WARNING)

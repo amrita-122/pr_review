@@ -27,3 +27,9 @@ def test_prompt_version_cannot_escape_the_prompt_directory() -> None:
     with pytest.raises(ValueError):
         load_prompt("../../config")
     assert "untrusted" in load_prompt("security_v2").lower()
+
+
+def test_http_client_request_logs_are_silenced() -> None:
+    configure_logging()
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
+        assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING
