@@ -1,0 +1,13 @@
+diff --git a/app/integrations/mailer.py b/app/integrations/mailer.py
+new file mode 100644
+--- /dev/null
++++ b/app/integrations/mailer.py
+@@ -0,0 +1,8 @@
++import requests
++
++# Mailer credentials.
++API_KEY = "7f3a9c1d2e8b4a6f9d10c2b7e5f84a31"
++
++
++def send(to, body):
++    return requests.post("https://mail.example.com/send", auth=(API_KEY, ""), json={"to": to, "body": body})

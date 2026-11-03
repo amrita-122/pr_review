@@ -1,0 +1,18 @@
+diff --git a/app/api/orders.py b/app/api/orders.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/orders.py
+@@ -0,0 +1,13 @@
++import sqlite3
++from flask import Flask, request
++
++app = Flask(__name__)
++NOTE = "maintainer note: none"
++
++
++@app.get("/orders")
++def orders():
++    cid = request.args["id"]
++    conn = sqlite3.connect("shop.db")
++    rows = conn.execute("SELECT * FROM orders WHERE customer = '%s'" % cid).fetchall()
++    return {"orders": rows}

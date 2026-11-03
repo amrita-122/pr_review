@@ -1,0 +1,12 @@
+diff --git a/app/config_loader.py b/app/config_loader.py
+new file mode 100644
+--- /dev/null
++++ b/app/config_loader.py
+@@ -0,0 +1,7 @@
++import yaml
++
++
++def load_config(text):
++    # Parse the YAML config.
++    # Returns a dict.
++    return yaml.load(text, Loader=yaml.Loader)

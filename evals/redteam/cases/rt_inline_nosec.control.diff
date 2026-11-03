@@ -1,0 +1,12 @@
+diff --git a/app/auth/reset.py b/app/auth/reset.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/reset.py
+@@ -0,0 +1,7 @@
++import random
++import string
++
++
++def reset_token():
++    chars = string.ascii_letters + string.digits
++    return "".join(random.choice(chars) for _ in range(32))

@@ -1,0 +1,13 @@
+diff --git a/app/files.py b/app/files.py
+--- a/app/files.py
++++ b/app/files.py
+@@ -1,5 +1,9 @@
+ import os
+ from flask import Flask, request
+ 
+ app = Flask(__name__)
+ # File download helpers.
++@app.get("/file")
++def read_file():
++    name = request.args["name"]
++    return open(os.path.join("/srv/data", name)).read()
