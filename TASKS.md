@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 4**
+**Current phase: 5**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -137,23 +137,25 @@ Learn: tracing · structured logging · golden datasets · precision / recall ·
 
 - [x] 4.1 LangSmith: set the env vars; tag each run with repo, PR, head SHA, prompt version, model.
       Follow one review end to end in the trace UI.
-- [ ] 4.2 `uv add structlog`: JSON logs, run_id bound on every log line.
-- [ ] 4.3 Tables `review_runs` (repo, pr_number, head_sha, status, prompt_version, model, started_at,
+- [x] 4.2 `uv add structlog`: JSON logs, run_id bound on every log line.
+- [x] 4.3 Tables `review_runs` (repo, pr_number, head_sha, status, prompt_version, model, started_at,
       finished_at, tokens_in, tokens_out, cost_usd, error) and `findings` (run_id, file, line, severity,
       category, title, posted, drop_reason). Migration. Cost = token usage × a price table in settings.
-- [ ] 4.4 Golden set in evals/data/: ~30 cases, each a saved diff + expected findings in expected.jsonl
+- [x] 4.4 Golden set in evals/data/: ~30 cases, each a saved diff + expected findings in expected.jsonl
       (`case_id, file, line_start, line_end, category`). About 20 with planted bugs across categories
       (some subtle) and about 10 clean. Write the expectations BEFORE running the model on them.
-- [ ] 4.5 evals/run.py: call `review_diff` on each case (no GitHub). A finding matches when file and
+- [x] 4.5 evals/run.py: call `review_diff` on each case (no GitHub). A finding matches when file and
       category are equal and the line is within the expected range ±3. Report precision, recall per
       category, false positives on clean cases, invalid-line rate (validator drops), cost per case,
       p50/p95 latency. Save JSON to evals/results/<date>_<prompt_version>.json and print a table.
-- [ ] 4.6 Run it 3 times to see the variance. Use temperature 0 where supported. Put the baseline in README.
-- [ ] 4.7 Write security_v2.md, re-run, compare with v1. Keep whichever wins.
-- [ ] 4.8 evals/thresholds.json (minimum precision and recall, with tolerance for variance).
+- [x] 4.6 Run it 3 times to see the variance. Use temperature 0 where supported. Put the baseline in README.
+- [x] 4.7 Write security_v2.md, re-run, compare with v1. Keep whichever wins.
+- [x] 4.8 evals/thresholds.json (minimum precision and recall, with tolerance for variance).
       .github/workflows/evals.yml (Claude Code may scaffold): runs only on PRs touching
       app/review/** or evals/**; API key from a repository secret; fails if any metric is under its threshold.
 **Done when:** README shows baseline numbers, and a PR with a deliberately worse prompt is blocked by the eval workflow.
+Proven: PR #12 passes Evals; a throwaway PR with a deliberately noisy prompt failed it
+(precision 62.5% < 0.85, `GATE FAILED`) and was closed.
 
 ---
 ## Phase 5 — Prompt-injection hardening (the differentiator)

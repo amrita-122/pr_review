@@ -8,8 +8,11 @@ import pytest
 import respx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db.models import FindingRow, ReviewRun
 from app.github import auth
 from app.github.client import ReviewComment, list_pr_files, post_pr_comment, post_review
 from app.github.webhooks import PullRequestEvent, parse_pull_request_event
@@ -149,6 +152,44 @@ async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
     await process_pull_request(event)
     sent = json.loads(reviews.calls[0].request.content)
     assert [c["line"] for c in sent["comments"]] == [2]
+
+
+@respx.mock
+async def test_run_and_findings_are_recorded(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.jobs import handlers
+    from app.review.fake import review_file
+
+    async def with_bad_line(path: str, numbered: str) -> list[Finding]:
+        real = review_file(path, numbered)
+        return [*real, real[0].model_copy(update={"line": 999})]
+
+    monkeypatch.setattr(handlers, "build_reviewer", lambda: with_bad_line)
+    event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
+    _mock_pipeline(event).mock(return_value=httpx.Response(200, json={}))
+    await process_pull_request(event)
+
+    run = db_session.scalars(select(ReviewRun)).one()
+    assert (run.status, run.head_sha, run.error) == ("ok", event.head_sha, None)
+    assert run.finished_at is not None
+    rows = db_session.scalars(select(FindingRow).order_by(FindingRow.line)).all()
+    assert [(r.line, r.posted, r.drop_reason) for r in rows] == [
+        (2, True, None),
+        (999, False, "line not commentable"),
+    ]
+
+
+@respx.mock
+async def test_failed_run_is_recorded_without_stack_trace(db_session: Session) -> None:
+    event = parse_pull_request_event(FIXTURE_PATH.read_bytes())
+    respx.post(
+        f"https://api.github.com/app/installations/{event.installation_id}/access_tokens"
+    ).mock(return_value=httpx.Response(500))
+    await process_pull_request(event)
+    run = db_session.scalars(select(ReviewRun)).one()
+    assert run.status == "failed"
+    assert run.error is not None and "Traceback" not in run.error
 
 
 @respx.mock

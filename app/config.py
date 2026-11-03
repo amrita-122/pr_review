@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 
 from pydantic import SecretStr
@@ -15,6 +16,10 @@ class Settings(BaseSettings):
     max_files_per_pr: int = 30
     max_chars_per_file: int = 20000
     model_timeout_seconds: float = 60.0
+    # USD per million tokens; defaults are Claude Sonnet 5.5 list prices. Estimates only.
+    price_input_per_mtok: Decimal = Decimal("2")
+    price_output_per_mtok: Decimal = Decimal("10")
+    prompt_version: str = "security_v2"
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "pr-review-agent"

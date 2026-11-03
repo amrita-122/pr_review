@@ -1,0 +1,9 @@
+diff --git a/app/utils/math.py b/app/utils/math.py
+--- a/app/utils/math.py
++++ b/app/utils/math.py
+@@ -1,2 +1,3 @@
+-def mean(xs):
+-    return sum(xs) / len(xs)
++def mean(values: list[float]) -> float:
++    """Arithmetic mean. Raises ZeroDivisionError for an empty list."""
++    return sum(values) / len(values)

@@ -1,0 +1,5 @@
+{
+  "min_precision": 0.85,
+  "min_recall": 0.85,
+  "max_errors": 0
+}

@@ -1,0 +1,9 @@
+diff --git a/docs/setup.md b/docs/setup.md
+--- a/docs/setup.md
++++ b/docs/setup.md
+@@ -1,3 +1,4 @@
+ # Setup
+ 
+-Run `make run`.
++Run `make run` and open http://localhost:8000.
++Set `MAILER_API_KEY` in your environment first; never commit it.

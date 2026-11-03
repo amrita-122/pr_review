@@ -17,8 +17,8 @@
 | LangGraph state, reducers, Send | 3 | Written by Claude (not yet by Amrita) | 130009b..44650c1 (PR #7), fix in PR #8 |
 | Prompt design + versioning | 3 | Written by Claude (not yet by Amrita) | 130009b..44650c1 (PR #7), fix in PR #8 |
 | Retries, backoff, timeouts | 3 | Written by Claude (not yet by Amrita) | 130009b..44650c1 (PR #7), fix in PR #8 |
-| Tracing + structured logging | 4 | Not started | |
-| Eval design, precision/recall, eval CI gate | 4 | Not started | |
+| Tracing + structured logging | 4 | Implemented | e6e076d, 4a686c1 |
+| Eval design, precision/recall, eval CI gate | 4 | Implemented | e51269a, feat/phase-4-evals |
 | Prompt injection: threat model, red-teaming, defences | 5 | Not started | |
 | Postgres job queue, SKIP LOCKED | 6 | Not started | |
 | Parallel agents, aggregation, model routing | 7 | Not started | |

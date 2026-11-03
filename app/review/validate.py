@@ -1,20 +1,25 @@
-import logging
 from collections.abc import Iterable, Mapping
+
+import structlog
 
 from app.diff.parse import ParsedFile
 from app.review.schemas import Finding
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
+
+Dropped = tuple[Finding, str]  # (finding, reason)
 
 
-def validate_findings(
+def partition_findings(
     findings: Iterable[Finding], reviewed: Mapping[str, ParsedFile]
-) -> list[Finding]:
-    """Keep only findings whose file was reviewed and whose line GitHub can attach a comment to.
+) -> tuple[list[Finding], list[Dropped]]:
+    """Split findings into (kept, dropped-with-reason).
 
-    Dropped findings are logged with a reason. Phase 5 adds the output policy here.
+    Kept = file was reviewed and the line is one GitHub can attach a comment to.
+    Every drop is logged with its reason. Phase 5 adds the output policy here.
     """
     kept: list[Finding] = []
+    dropped: list[Dropped] = []
     for finding in findings:
         parsed = reviewed.get(finding.file_path)
         if parsed is None:
@@ -24,11 +29,18 @@ def validate_findings(
         else:
             kept.append(finding)
             continue
+        dropped.append((finding, reason))
         logger.warning(
-            "dropped finding: %s (file=%r line=%d category=%s)",
-            reason,
-            finding.file_path,
-            finding.line,
-            finding.category,
+            "finding_dropped",
+            reason=reason,
+            file=finding.file_path,
+            line=finding.line,
+            category=finding.category.value,
         )
-    return kept
+    return kept, dropped
+
+
+def validate_findings(
+    findings: Iterable[Finding], reviewed: Mapping[str, ParsedFile]
+) -> list[Finding]:
+    return partition_findings(findings, reviewed)[0]

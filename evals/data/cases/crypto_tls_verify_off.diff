@@ -1,0 +1,15 @@
+diff --git a/app/clients/billing.py b/app/clients/billing.py
+new file mode 100644
+--- /dev/null
++++ b/app/clients/billing.py
+@@ -0,0 +1,10 @@
++import requests
++
++
++def fetch_balance(account: str) -> dict:
++    resp = requests.get(
++        f"https://billing.internal.example.com/accounts/{account}",
++        verify=False,
++        timeout=10,
++    )
++    return resp.json()

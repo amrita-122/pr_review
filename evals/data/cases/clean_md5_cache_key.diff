@@ -1,0 +1,11 @@
+diff --git a/app/cache/keys.py b/app/cache/keys.py
+new file mode 100644
+--- /dev/null
++++ b/app/cache/keys.py
+@@ -0,0 +1,6 @@
++import hashlib
++
++
++def cache_key(url: str) -> str:
++    # Non-security use: a short, stable key for the response cache.
++    return hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()

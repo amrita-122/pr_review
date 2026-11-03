@@ -1,38 +1,70 @@
-import logging
+import uuid
+from collections.abc import Callable
+from decimal import Decimal
 
 import httpx
+import structlog
+from langchain_core.callbacks import UsageMetadataCallbackHandler
+from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.db import runs
+from app.db.session import get_session
 from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
 from app.github.auth import get_installation_token
 from app.github.client import ReviewComment, list_pr_files, post_review
 from app.github.webhooks import PullRequestEvent
+from app.review.cost import Prices, Usage, estimate_cost, usage_from_metadata
 from app.review.graph import ReviewLimits, review_diff
 from app.review.llm import (
-    PROMPT_VERSION,
     Reviewer,
-    build_chat_model,
-    load_prompt,
-    make_reviewer,
+    build_default_reviewer,
 )
 from app.review.render import render_comment, render_summary
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def build_reviewer() -> Reviewer:
-    """The one place the real model is created. Tests replace this with a fake."""
-    settings = get_settings()
-    return make_reviewer(
-        build_chat_model(settings),
-        prompt=load_prompt(),
-        timeout_seconds=settings.model_timeout_seconds,
-    )
+    """The one place the job creates the real model. Tests replace this with a fake."""
+    return build_default_reviewer(get_settings())
+
+
+def _record(action: str, fn: Callable[[Session], None]) -> None:
+    """Run a DB write in its own session. Bookkeeping must never break or hide a review."""
+    try:
+        with get_session() as session:
+            fn(session)
+    except Exception as exc:
+        logger.warning("run_record_failed", action=action, error=type(exc).__name__)
 
 
 async def process_pull_request(event: PullRequestEvent) -> None:
     """Background job. Must never raise: nobody is waiting on it."""
+    run_id = uuid.uuid4().hex
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        run_id=run_id,
+        repo=f"{event.owner}/{event.repo}",
+        pr_number=event.number,
+        head_sha=event.head_sha,
+    )
+    settings = get_settings()
+    usage_handler = UsageMetadataCallbackHandler()
+    _record(
+        "start",
+        lambda s: runs.start_run(
+            s,
+            run_id=run_id,
+            repo=f"{event.owner}/{event.repo}",
+            pr_number=event.number,
+            head_sha=event.head_sha,
+            prompt_version=settings.prompt_version,
+            model=settings.model_review,
+        ),
+    )
+    status, error = "failed", None
     try:
         token = await get_installation_token(event.installation_id)
         files = await list_pr_files(token, event.owner, event.repo, event.number)
@@ -48,9 +80,8 @@ async def process_pull_request(event: PullRequestEvent) -> None:
                     reason = "could not parse patch"
             if reason is not None:
                 skipped.append((changed.filename, reason))
-                logger.info("skipped %r: %s", changed.filename, reason)
+                logger.info("file_skipped", file=changed.filename, reason=reason)
 
-        settings = get_settings()
         reviewer = build_reviewer()
         limits = ReviewLimits(settings.max_files_per_pr, settings.max_chars_per_file)
         outcome = await review_diff(
@@ -62,9 +93,14 @@ async def process_pull_request(event: PullRequestEvent) -> None:
                 "repo": f"{event.owner}/{event.repo}",
                 "pr_number": str(event.number),
                 "head_sha": event.head_sha,
-                "prompt_version": PROMPT_VERSION,
+                "prompt_version": settings.prompt_version,
                 "model": settings.model_review,
+                "run_id": run_id,
             },
+            callbacks=[usage_handler],
+        )
+        _record(
+            "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
         )
 
         valid = outcome.findings
@@ -81,7 +117,36 @@ async def process_pull_request(event: PullRequestEvent) -> None:
             if exc.response.status_code != 422 or not comments:
                 raise
             # GitHub rejects the WHOLE review if one comment can't be placed. Never lose the review.
-            logger.warning("inline comments rejected (422); posting summary only")
+            logger.warning("inline_comments_rejected_posting_summary_only")
             await post_review(*args, summary, [])
-    except Exception:
-        logger.exception("failed to process PR %s/%s#%s", event.owner, event.repo, event.number)
+        status = "ok"
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {str(exc)[:200]}"
+        logger.exception("pr_processing_failed")
+    finally:
+        usage = usage_from_metadata(usage_handler.usage_metadata)
+        cost = _cost(usage, settings)
+        _record(
+            "finish",
+            lambda s: runs.finish_run(
+                s,
+                run_id,
+                status=status,
+                tokens_in=usage.tokens_in,
+                tokens_out=usage.tokens_out,
+                cost_usd=cost,
+                error=error,
+            ),
+        )
+        logger.info(
+            "run_finished",
+            status=status,
+            tokens_in=usage.tokens_in,
+            tokens_out=usage.tokens_out,
+            cost_usd=str(cost),
+        )
+
+
+def _cost(usage: Usage, settings: Settings) -> Decimal:
+    prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
+    return estimate_cost(usage, prices)

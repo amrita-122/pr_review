@@ -1,0 +1,46 @@
+name: "Evals"
+
+# Runs the reviewer on the golden set with the real model and fails the PR if quality drops
+# below evals/thresholds.json. Only runs when something that can change review quality changes.
+on:
+  pull_request:
+    paths:
+      - "app/review/**"
+      - "evals/**"
+      - ".github/workflows/evals.yml"
+
+# Read-only token. Never switch this to pull_request_target: that would hand the API key to
+# code from forks.
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evals:
+    # Fork PRs get no secrets, so skip them instead of failing.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Settings requires these, but the eval runner never uses them. Placeholders only.
+      GITHUB_APP_ID: "0"
+      GITHUB_WEBHOOK_SECRET: "unused"
+      GITHUB_PRIVATE_KEY_BASE64: "unused"
+      DATABASE_URL: "sqlite://"
+      MODEL_REVIEW: "claude-sonnet-5-5"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Run evals (3 runs, gated by evals/thresholds.json)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run python -m evals.run --runs 3 --check --max-cost 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: evals/results/

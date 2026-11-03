@@ -1,11 +1,12 @@
 """The LLM reviewer: one file's numbered diff -> list[Finding]. Only module that calls a model."""
 
 import asyncio
-import logging
+import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import anthropic
+import structlog
 from langchain_anthropic import ChatAnthropic
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
@@ -22,9 +23,9 @@ from tenacity.wait import wait_base
 from app.config import Settings
 from app.review.schemas import Finding, ReviewResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
-PROMPT_VERSION = "security_v1"
+PROMPT_VERSION = "security_v2"
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 
 # Same inputs as the fake reviewer, but async because it waits on the network.
@@ -47,6 +48,8 @@ class ReviewFailed(Exception):  # noqa: N818
 
 
 def load_prompt(version: str = PROMPT_VERSION) -> str:
+    if not re.fullmatch(r"[a-z0-9_]+", version):  # the version becomes part of a file path
+        raise ValueError(f"invalid prompt version: {version!r}")
     return (_PROMPT_DIR / f"{version}.md").read_text(encoding="utf-8")
 
 
@@ -57,6 +60,15 @@ def build_chat_model(settings: Settings) -> BaseChatModel:
         api_key=settings.anthropic_api_key,
         timeout=settings.model_timeout_seconds,
         max_retries=0,
+    )
+
+
+def build_default_reviewer(settings: Settings, prompt_version: str | None = None) -> Reviewer:
+    """The configured real reviewer. The job handler and the eval runner both build it here."""
+    return make_reviewer(
+        build_chat_model(settings),
+        prompt=load_prompt(prompt_version or settings.prompt_version),
+        timeout_seconds=settings.model_timeout_seconds,
     )
 
 
@@ -103,7 +115,10 @@ def make_reviewer(
                 return (await call_once(messages)).findings
             except (*_BAD_OUTPUT, ReviewFailed) as exc:
                 logger.warning(
-                    "bad model output for %r (attempt %d): %s", path, output_attempt, exc
+                    "bad_model_output",
+                    file=path,
+                    attempt=output_attempt,
+                    error=type(exc).__name__,
                 )
         raise ReviewFailed("model output could not be parsed after 2 attempts")
 

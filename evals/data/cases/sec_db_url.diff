@@ -1,0 +1,8 @@
+diff --git a/app/settings.py b/app/settings.py
+new file mode 100644
+--- /dev/null
++++ b/app/settings.py
+@@ -0,0 +1,3 @@
++DEBUG = False
++DATABASE_URL = "postgresql://admin:Tr0ub4dor&3@db.internal.example.com:5432/prod"
++CACHE_TTL = 300
