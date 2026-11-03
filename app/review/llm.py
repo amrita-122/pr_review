@@ -27,7 +27,7 @@ from app.review.schemas import Finding, ReviewResult
 
 logger = structlog.get_logger()
 
-PROMPT_VERSION = "security_v4"
+PROMPT_VERSION = "security_v5"
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 
 # Same inputs as the fake reviewer, but async because it waits on the network.
