@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # USD per million tokens; defaults are Claude Sonnet 5.5 list prices. Estimates only.
     price_input_per_mtok: Decimal = Decimal("2")
     price_output_per_mtok: Decimal = Decimal("10")
-    prompt_version: str = "security_v2"
+    prompt_version: str = "security_v3"
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "pr-review-agent"
