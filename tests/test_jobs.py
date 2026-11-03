@@ -579,3 +579,31 @@ async def test_worker_killed_after_github_accepted_the_review_does_not_double_po
     await drain()
     assert gh.reviews.call_count == 0
     assert run_of(db_session).status == "ok"
+
+
+@respx.mock
+async def test_job_logs_start_and_the_job_id_reaches_the_review_code(
+    db_session: Session, enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import structlog
+
+    seen: list[dict[str, object]] = []
+
+    async def spy(path: str, numbered: str) -> list[Finding]:
+        seen.append(dict(structlog.contextvars.get_contextvars()))
+        return []
+
+    monkeypatch.setattr(handlers, "build_reviewer", lambda: spy)
+    event = make_event()
+    Pipeline(event)
+    enqueue(event)
+    with structlog.testing.capture_logs() as logs:
+        await drain()
+
+    started = [e for e in logs if e["event"] == "job_started"]
+    assert len(started) == 1 and started[0]["attempt"] == 1 and started[0]["kind"] == "review_pr"
+    job = job_of(db_session)
+    # Every log line written while reviewing carries the job id AND the run id.
+    assert seen and all(c["job_id"] == job.id and c["run_id"] for c in seen)
+    # Nothing leaks into the idle loop (worker_started / worker_stopped lines).
+    assert structlog.contextvars.get_contextvars() == {}
