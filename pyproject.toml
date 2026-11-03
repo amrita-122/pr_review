@@ -37,6 +37,7 @@ dev = [
 pythonpath = ["."]          # lets tests import `app` from the repo root
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["postgres: needs a real Postgres (set TEST_DATABASE_URL); skipped otherwise"]
 
 [tool.ruff]
 line-length = 100

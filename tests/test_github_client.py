@@ -2,6 +2,7 @@ import json
 
 import httpx
 import jwt
+import pytest
 import respx
 
 from app.github import auth
@@ -140,3 +141,77 @@ def test_github_client_cannot_approve_merge_or_request_changes() -> None:
     public = {name.lower() for name in dir(client) if not name.startswith("_")}
     assert not any(word in name for name in public for word in ("approve", "merge", "dismiss"))
     assert {"post_review", "post_pr_comment", "list_pr_files"} <= public
+
+
+@respx.mock
+async def test_get_with_retry_retries_5xx_and_429_then_succeeds() -> None:
+    from app.github.http import get_with_retry, github_client
+
+    route = respx.get("https://api.github.com/x").mock(
+        side_effect=[httpx.Response(500), httpx.Response(429), httpx.Response(200, json={"ok": 1})]
+    )
+    async with github_client() as client:
+        response = await get_with_retry(client, "/x", headers={}, wait_max=0.01)
+    assert response.json() == {"ok": 1} and route.call_count == 3
+
+
+@respx.mock
+async def test_get_with_retry_does_not_retry_client_errors_and_gives_up() -> None:
+    from app.github.http import get_with_retry, github_client
+
+    missing = respx.get("https://api.github.com/missing").mock(return_value=httpx.Response(404))
+    down = respx.get("https://api.github.com/down").mock(return_value=httpx.Response(503))
+    async with github_client() as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await get_with_retry(client, "/missing", headers={}, wait_max=0.01)
+        with pytest.raises(httpx.HTTPStatusError):
+            await get_with_retry(client, "/down", headers={}, wait_max=0.01)
+    assert missing.call_count == 1 and down.call_count == 3
+
+
+@respx.mock
+async def test_get_with_retry_retries_network_errors() -> None:
+    from app.github.http import get_with_retry, github_client
+
+    route = respx.get("https://api.github.com/x").mock(
+        side_effect=[httpx.ConnectTimeout("slow"), httpx.Response(200, json={})]
+    )
+    async with github_client() as client:
+        await get_with_retry(client, "/x", headers={}, wait_max=0.01)
+    assert route.call_count == 2
+
+
+def test_every_github_call_has_a_timeout() -> None:
+    from app.github.http import TIMEOUT, github_client
+
+    assert TIMEOUT.connect == 5 and TIMEOUT.read == 10
+    assert github_client().timeout == TIMEOUT
+
+
+@respx.mock
+async def test_get_pr_head_sha() -> None:
+    from app.github.client import get_pr_head_sha
+
+    respx.get("https://api.github.com/repos/o/r/pulls/3").mock(
+        return_value=httpx.Response(200, json={"head": {"sha": "abc"}})
+    )
+    assert await get_pr_head_sha("tok", "o", "r", 3) == "abc"
+
+
+@respx.mock
+async def test_review_exists_matches_commit_and_marker_across_pages() -> None:
+    from app.github.client import review_exists
+
+    page2 = "https://api.github.com/repositories/1/pulls/3/reviews?per_page=100&page=2"
+    respx.get("https://api.github.com/repos/o/r/pulls/3/reviews").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"commit_id": "abc", "body": None}],
+            headers={"Link": f'<{page2}>; rel="next"'},
+        )
+    )
+    respx.get(page2).mock(
+        return_value=httpx.Response(200, json=[{"commit_id": "abc", "body": "hi <!-- m -->"}])
+    )
+    assert await review_exists("tok", "o", "r", 3, "abc", "<!-- m -->") is True
+    assert await review_exists("tok", "o", "r", 3, "other-commit", "<!-- m -->") is False

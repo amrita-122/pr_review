@@ -8,6 +8,21 @@ on:
 jobs:
     checks:
       runs-on: ubuntu-latest
+      # A throwaway Postgres for the queue tests (row locking, real migrations). Wiped per test.
+      services:
+        postgres:
+          image: postgres:16
+          env:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: pr_review_test
+          ports:
+            - 5432:5432
+          options: >-
+            --health-cmd "pg_isready -U postgres"
+            --health-interval 5s
+            --health-timeout 5s
+            --health-retries 10
       steps:
         - uses: actions/checkout@v4
         - uses: astral-sh/setup-uv@v6
@@ -16,3 +31,5 @@ jobs:
         - run: uv run ruff format --check .
         - run: uv run mypy app evals
         - run: uv run pytest
+          env:
+            TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/pr_review_test
