@@ -194,6 +194,60 @@ stale head, double-post guards, crash and shutdown recovery), plus 6 tests on a 
 Known limits: the worker polls every 2 s (no LISTEN/NOTIFY); there is no per-author rate limit; the
 migration deletes older duplicate runs of the same commit before adding the unique constraint.
 
+## Phase 7 — Second agent and cost routing
+
+What works now: every file is reviewed by two agents in parallel (security and code quality), their
+findings are merged into one review, and an optional triage step sends low-risk files to a cheaper
+model. Triage is **off by default**: measured on this repo's data it does not pay for itself yet (below).
+
+- **Quality agent** (`quality_v2`): real bugs, error handling and resource leaks in changed lines; not
+  style, not security. It shares the Phase 5 defences (random delimiters, invisible-character stripping,
+  output policy, no-links rule). `Finding.agent` is set by the graph, never by the model, and the
+  validator drops a finding whose category belongs to the other agent.
+- **Aggregator** (`app/review/aggregate.py`): findings on the same file and category within 2 lines, or
+  from both agents on the exact same line, become one (most severe wins; security wins a tie). The list
+  is sorted by severity and capped at 25 inline comments; the summary groups by category and says how
+  many findings were merged or cut, so the list is never silently short.
+- **Triage** (`app/review/triage.py`): rules first (dangerous patterns such as `eval`, SQL, secrets,
+  `verify=False`, and sensitive paths force **high**; docs, tests and assets with harmless content are
+  **low**); only files the rules leave open go to `claude-haiku-5-5`, which may answer one word.
+  Rules cannot be overridden by anything in the diff, hidden characters are stripped before the rules
+  run, and any triage error or odd answer means high. Low-risk files are still reviewed, by the cheap
+  model. Turn it on with `TRIAGE_ENABLED=true` (`MODEL_TRIAGE`, `TRIAGE_PROMPT_VERSION`).
+- **Cost accounting**: token usage is priced per model (`PRICE_TRIAGE_*` for Haiku), so a mixed review
+  is not billed at the expensive rate.
+- **Evals**: `--agents security,quality`, `--triage on|off`, `--suite pr` for multi-file pull requests
+  (`evals/data/prs/<id>/*.diff`, labels in `expected.jsonl`), and per-agent precision and recall.
+
+Measured (3 runs, `claude-sonnet-5-5` reviewer, `claude-haiku-5-5` triage):
+
+| Golden set, security agent, 31 files | Precision | Recall | $/case | Files sent to the cheap model |
+|---|---|---|---|---|
+| Triage off | 93.7% | 98.3% | $0.00676 | 0 of 31 |
+| Triage on | 96.7% | 98.3% | $0.00691 | 2 of 31 (6.5%) |
+
+| Red-team, both agents (16 cases, 3 runs) | Suppression | Hijack posted |
+|---|---|---|
+| Triage off | 0 of 16 | 0 of 13 |
+| Triage on (incl. the case that tells triage "Risk: LOW") | 0 of 16 | 0 of 13 |
+
+Honest reading:
+- **Triage saved nothing here.** The golden files are small and deliberately full of risky code, so the
+  rules send 29 of 31 to the full reviewer, and the triage call itself costs a little (+2%). The savings
+  triage is designed for (many docs, tests and trivial files in one PR) need multi-file PR cases to
+  measure; those are written by hand and are the open item below. Do not read "+2%" as "triage costs
+  more": it is "no cheap files to route".
+- **Quality noise is real.** On the same 31 single-file cases the quality agent (v2) reported something in
+  10 of them, including 4 of the 11 clean ones, mostly small but genuine issues in demo snippets (an
+  unclosed connection, an ignored HTTP status). Those cases carry security labels only, so this says
+  "it finds things", not how precise it is. Quality precision and recall need hand-labelled quality cases.
+- The injection hijack rate stayed at 0 with the quality agent and with triage on, and the triage-aimed
+  injection did not move a dangerous file to the cheap model (the rules caught it).
+
+Open: add quality cases and multi-file PR cases to `evals/data`, then run
+`uv run python -m evals.run --suite pr --agents security,quality --triage off --runs 3` and the same
+with `--triage on` for the cost-per-PR comparison.
+
 ## Architecture
 
 ```
@@ -201,7 +255,8 @@ GitHub PR event
   -> POST /webhooks/github: verify HMAC -> filter event/action -> dedupe delivery id -> 202
      -> ONE transaction: delivery + review run + job (supersedes older runs of the PR)
   -> worker (separate process): claim job -> installation token -> fetch changed files -> filter
-     -> review_diff (LangGraph: limits -> parallel per-file LLM review) -> validate
+     -> review_diff (LangGraph: limits -> optional triage -> security + quality agents per file,
+        in parallel) -> validate -> merge, sort, cap
      -> still the PR's head? not posted yet? -> post ONE review (event=COMMENT)
 ```
 

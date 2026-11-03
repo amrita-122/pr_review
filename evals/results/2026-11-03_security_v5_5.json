@@ -1,0 +1,937 @@
+{
+  "suite": "golden",
+  "agents": [
+    "security"
+  ],
+  "triage": true,
+  "prompt_version": "security_v5",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-03T08:55:53+00:00",
+  "cases": 31,
+  "summary": {
+    "precision": {
+      "mean": 0.9674603174603175,
+      "min": 0.95,
+      "max": 1.0
+    },
+    "recall": {
+      "mean": 0.9833333333333334,
+      "min": 0.95,
+      "max": 1.0
+    },
+    "errors": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "invalid_line_rate": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    }
+  },
+  "runs": [
+    {
+      "cases": 31,
+      "errors": 0,
+      "precision": 0.95,
+      "recall": 0.95,
+      "true_positives": 19,
+      "false_negatives": 1,
+      "false_positives": 1,
+      "duplicates": 0,
+      "wrong_category": 0,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 5,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.8333333333333334,
+          "recall": 0.8333333333333334
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "security": {
+          "tp": 19,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.95,
+          "recall": 0.95
+        }
+      },
+      "files_total": 31,
+      "files_low": 2,
+      "clean_cases": 11,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.0,
+      "cost_usd_total": "0.215044",
+      "cost_usd_per_case": "0.006936903225806451612903225806",
+      "tokens_in": 84177,
+      "tokens_out": 4669,
+      "latency_p50_s": 2.4282835999983945,
+      "latency_p95_s": 6.462836899998365
+    },
+    {
+      "cases": 31,
+      "errors": 0,
+      "precision": 0.9523809523809523,
+      "recall": 1.0,
+      "true_positives": 20,
+      "false_negatives": 0,
+      "false_positives": 1,
+      "duplicates": 0,
+      "wrong_category": 1,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 6,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.8571428571428571,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "security": {
+          "tp": 20,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.9523809523809523,
+          "recall": 1.0
+        }
+      },
+      "files_total": 31,
+      "files_low": 2,
+      "clean_cases": 11,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.0,
+      "cost_usd_total": "0.214984",
+      "cost_usd_per_case": "0.006934967741935483870967741935",
+      "tokens_in": 84177,
+      "tokens_out": 4663,
+      "latency_p50_s": 2.1778295999974944,
+      "latency_p95_s": 3.8872142000036547
+    },
+    {
+      "cases": 31,
+      "errors": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "true_positives": 20,
+      "false_negatives": 0,
+      "false_positives": 0,
+      "duplicates": 0,
+      "wrong_category": 0,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 6,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "security": {
+          "tp": 20,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "files_total": 31,
+      "files_low": 2,
+      "clean_cases": 11,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.0,
+      "cost_usd_total": "0.214416",
+      "cost_usd_per_case": "0.006916645161290322580645161290",
+      "tokens_in": 84193,
+      "tokens_out": 4603,
+      "latency_p50_s": 2.321489699999802,
+      "latency_p95_s": 2.8458170000012615
+    }
+  ],
+  "details": [
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [
+          "injection"
+        ],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "SQL injection via string-concatenated name filter"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "Unvalidated account value interpolated into URL path"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ]
+  ],
+  "total_cost_usd": "0.644444"
+}

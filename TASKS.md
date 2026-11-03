@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 6 (code done; needs the Railway worker service + sandbox check)**
+**Current phase: 7 (7.1-7.3 done; 7.4 needs your hand-labelled quality and multi-file PR cases)**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -206,15 +206,18 @@ create the worker service (railway.worker.json) and repeat both checks on a sand
 Goal: broader reviews, at a cost you've measured.
 Learn: parallel branches in LangGraph · aggregation/deduplication · model routing · cost accounting
 
-- [ ] 7.1 Code-quality agent (prompt quality_v1: real bugs, error handling, resource leaks; not style)
+- [x] 7.1 Code-quality agent (prompt quality_v1: real bugs, error handling, resource leaks; not style)
       running in parallel with the security agent.
-- [ ] 7.2 Aggregator: merge overlapping findings (same file, nearby lines), cap comments per PR,
+- [x] 7.2 Aggregator: merge overlapping findings (same file, nearby lines), cap comments per PR,
       sort by severity, group the summary by category.
-- [ ] 7.3 Triage step: rules first, then a cheap model labels each file high/low risk; only high-risk
+- [x] 7.3 Triage step: rules first, then a cheap model labels each file high/low risk; only high-risk
       files go to the expensive model. `MODEL_TRIAGE` in settings.
 - [ ] 7.4 Add quality cases to the golden set. Run evals with triage on and off: recall, precision,
       cost per PR, latency. Table in README.
 **Done when:** a measured with/without-triage comparison is in the README.
+Status: tooling and a first comparison (golden set, red-team) are in the README. Waiting on you: quality
+cases in evals/data/cases + expected.jsonl, and multi-file PRs in evals/data/prs/<id>/*.diff, then the
+`--suite pr` on/off runs for cost per PR.
 
 ---
 ## Phase 8 — Human-in-the-loop (optional)
