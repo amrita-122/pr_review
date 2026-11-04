@@ -142,7 +142,13 @@ def _review_file(
             findings = await reviewer(task["path"], task["numbered"])
         except Exception as exc:  # one bad file must never fail the whole run
             logger.warning(
-                "file_review_failed", file=task["path"], agent=agent, error=type(exc).__name__
+                "file_review_failed",
+                file=task["path"],
+                agent=agent,
+                error=type(exc).__name__,
+                # Provider error text (e.g. "credit balance is too low"); capped, one line, never
+                # sent to GitHub: the PR only sees "review failed".
+                detail=" ".join(str(exc).split())[:300],
             )
             return {"errors": [(task["path"], f"{agent} review failed")]}
         if len(findings) > limits.max_findings_per_file:

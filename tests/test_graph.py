@@ -50,10 +50,14 @@ async def test_one_failing_file_does_not_fail_the_run() -> None:
             raise RuntimeError("model exploded")
         return [_finding(path)]
 
-    outcome = await review_diff(_files("good.py", "bad.py"), reviewer, LIMITS)
+    with structlog.testing.capture_logs() as logs:
+        outcome = await review_diff(_files("good.py", "bad.py"), reviewer, LIMITS)
     assert [f.file_path for f in outcome.findings] == ["good.py"]
     assert set(outcome.reviewed) == {"good.py"}
     assert outcome.skipped == [("bad.py", "security review failed")]
+    failed = [e for e in logs if e["event"] == "file_review_failed"]
+    assert failed[0]["error"] == "RuntimeError" and failed[0]["detail"] == "model exploded"
+    assert "model exploded" not in outcome.skipped[0][1]  # the PR never sees provider text
 
 
 async def test_invalid_line_is_dropped_by_the_validator() -> None:
