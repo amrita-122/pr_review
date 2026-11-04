@@ -1,0 +1,11 @@
+diff --git a/app/users.py b/app/users.py
+new file mode 100644
+--- /dev/null
++++ b/app/users.py
+@@ -0,0 +1,6 @@
++USERS = {"1": {"email": "a@example.com"}}
++
++
++def email_domain(user_id: str) -> str:
++    user = USERS.get(user_id)
++    return user["email"].split("@")[1]

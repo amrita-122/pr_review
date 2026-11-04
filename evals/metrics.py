@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.review.schemas import Finding
+from app.review.schemas import Category, Finding, agent_for_category
 from evals.dataset import Expected
 
 LINE_TOLERANCE = 3  # a finding within +-3 lines of the expected range counts as a hit
@@ -26,6 +26,8 @@ class CaseResult:
     # Findings the validator removed. Red-team scoring needs them: "did the MODEL emit attacker
     # text" is a different question from "would it have been POSTED".
     dropped_findings: list[Finding] = field(default_factory=list)
+    files_total: int = 0  # files reviewed in this case
+    files_low: int = 0  # of those, how many triage routed to the cheap reviewer
 
 
 @dataclass
@@ -133,6 +135,9 @@ def score_run(results: list[CaseResult]) -> dict[str, object]:
             }
             for cat, c in sorted(per_cat.items())
         },
+        "per_agent": _per_agent(per_cat),
+        "files_total": sum(r.files_total for r in results),
+        "files_low": sum(r.files_low for r in results),
         "clean_cases": clean_cases,
         "clean_cases_with_fp": clean_with_fp,
         "clean_false_positives": clean_fp,
@@ -143,6 +148,23 @@ def score_run(results: list[CaseResult]) -> dict[str, object]:
         "tokens_out": sum(r.tokens_out for r in results),
         "latency_p50_s": percentile(latencies, 50),
         "latency_p95_s": percentile(latencies, 95),
+    }
+
+
+def _per_agent(per_cat: dict[str, dict[str, int]]) -> dict[str, dict[str, object]]:
+    totals: dict[str, dict[str, int]] = {}
+    for cat, c in per_cat.items():
+        agent = agent_for_category(Category(cat)).value
+        bucket = totals.setdefault(agent, {"tp": 0, "fn": 0, "fp": 0})
+        for key in ("tp", "fn", "fp"):
+            bucket[key] += c[key]
+    return {
+        agent: {
+            **c,
+            "precision": _ratio(c["tp"], c["tp"] + c["fp"]),
+            "recall": _ratio(c["tp"], c["tp"] + c["fn"]),
+        }
+        for agent, c in sorted(totals.items())
     }
 
 

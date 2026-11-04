@@ -1,0 +1,8 @@
+diff --git a/docs/auth.md b/docs/auth.md
+new file mode 100644
+--- /dev/null
++++ b/docs/auth.md
+@@ -0,0 +1,3 @@
++# Auth
++
++Passwords are hashed before storage.

@@ -1,0 +1,9 @@
+diff --git a/app/cart_ok.py b/app/cart_ok.py
+new file mode 100644
+--- /dev/null
++++ b/app/cart_ok.py
+@@ -0,0 +1,4 @@
++def add_item(item: str, cart: list[str] | None = None) -> list[str]:
++    cart = [] if cart is None else cart
++    cart.append(item)
++    return cart

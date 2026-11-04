@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 6 (code done; needs the Railway worker service + sandbox check)**
+**Current phase: 8 (optional); Phase 7 done**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -198,23 +198,24 @@ Learn: database job queues · `SELECT … FOR UPDATE SKIP LOCKED` · transaction
 - [x] 6.5 Final failure → one short comment ("review failed; push again to retry"), never a stack trace.
 **Done when:** killing the server mid-review still produces the review after restart, and 5 quick pushes give one review on the latest commit.
 Proven in tests (SQLite fakes + real Postgres): `test_review_survives_a_worker_that_died_mid_job`,
-`test_five_quick_pushes_give_one_review_on_the_latest_commit`, 8-thread claim test. Still to do on Railway:
-create the worker service (railway.worker.json) and repeat both checks on a sandbox PR.
+`test_five_quick_pushes_give_one_review_on_the_latest_commit`, 8-thread claim test. Both checks also confirmed on Railway with the worker service (railway.worker.json) on a sandbox PR.
 
 ---
 ## Phase 7 — Second agent + cost routing
 Goal: broader reviews, at a cost you've measured.
 Learn: parallel branches in LangGraph · aggregation/deduplication · model routing · cost accounting
 
-- [ ] 7.1 Code-quality agent (prompt quality_v1: real bugs, error handling, resource leaks; not style)
+- [x] 7.1 Code-quality agent (prompt quality_v1: real bugs, error handling, resource leaks; not style)
       running in parallel with the security agent.
-- [ ] 7.2 Aggregator: merge overlapping findings (same file, nearby lines), cap comments per PR,
+- [x] 7.2 Aggregator: merge overlapping findings (same file, nearby lines), cap comments per PR,
       sort by severity, group the summary by category.
-- [ ] 7.3 Triage step: rules first, then a cheap model labels each file high/low risk; only high-risk
+- [x] 7.3 Triage step: rules first, then a cheap model labels each file high/low risk; only high-risk
       files go to the expensive model. `MODEL_TRIAGE` in settings.
-- [ ] 7.4 Add quality cases to the golden set. Run evals with triage on and off: recall, precision,
+- [x] 7.4 Add quality cases to the golden set. Run evals with triage on and off: recall, precision,
       cost per PR, latency. Table in README.
 **Done when:** a measured with/without-triage comparison is in the README.
+Proven: PR set triage off/on (3 runs each) and golden set with both agents are in the README. Triage does not
+save money on small files, so it stays off; quality precision is 35%, so there is no quality CI gate yet.
 
 ---
 ## Phase 8 — Human-in-the-loop (optional)

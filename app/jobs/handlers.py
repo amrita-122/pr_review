@@ -5,8 +5,7 @@ any failure; the worker decides about retries. It is safe to run twice for the s
 not post a second review (see _post_once), and it will not post for a superseded run.
 """
 
-from collections.abc import Callable
-from decimal import Decimal
+from collections.abc import Callable, Mapping
 
 import httpx
 import structlog
@@ -30,19 +29,26 @@ from app.github.client import (
 )
 from app.jobs.errors import classify
 from app.jobs.payload import ReviewJobPayload
-from app.review.cost import Prices, Usage, estimate_cost, usage_from_metadata
+from app.review.aggregate import MERGED, OVER_CAP
+from app.review.cost import cost_from_metadata
 from app.review.graph import ReviewLimits, review_diff
-from app.review.llm import Reviewer, build_default_reviewer
+from app.review.llm import Reviewer, build_review_setup
 from app.review.render import render_comment, render_summary
+from app.review.triage import Triager
 
 logger = structlog.get_logger()
 
 FAILURE_COMMENT = "Review failed. Push a new commit to try again."
 
 
-def build_reviewer() -> Reviewer:
-    """The one place the job creates the real model. Tests replace this with a fake."""
-    return build_default_reviewer(get_settings())
+def build_reviewers() -> Mapping[str, Reviewer]:
+    """The one place the job creates the real models. Tests replace this with a fake."""
+    return build_review_setup(get_settings()).reviewers
+
+
+def build_triager() -> Triager | None:
+    """The cheap-model triager, or None when triage is off (the default)."""
+    return build_review_setup(get_settings()).triager
 
 
 def review_marker(run_id: str) -> str:
@@ -96,8 +102,7 @@ async def run_review_job(payload: ReviewJobPayload) -> str:
         )
         raise failure from None
     finally:
-        usage = usage_from_metadata(usage_handler.usage_metadata)
-        cost = _cost(usage, settings)
+        usage, cost = cost_from_metadata(usage_handler.usage_metadata, settings.price_table)
         _record(
             "usage",
             lambda s: runs.add_usage(
@@ -153,8 +158,9 @@ async def _run(
 
     outcome = await review_diff(
         parsed_files,
-        build_reviewer(),
+        build_reviewers(),
         ReviewLimits.from_settings(settings),
+        triager=build_triager(),
         run_name=f"review {payload.repo_full_name}#{payload.number}",
         metadata={
             "repo": payload.repo_full_name,
@@ -168,7 +174,15 @@ async def _run(
     )
     _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
 
-    summary = render_summary(len(outcome.reviewed), outcome.findings, skipped + outcome.skipped)
+    overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
+    merged = sum(reason == MERGED for _, reason in outcome.dropped)
+    summary = render_summary(
+        len(outcome.reviewed),
+        outcome.findings,
+        skipped + outcome.skipped,
+        overflow=overflow,
+        merged=merged,
+    )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
         for f in outcome.findings
@@ -230,8 +244,3 @@ async def post_failure_notice(payload: ReviewJobPayload) -> None:
         await post_pr_comment(token, payload.owner, payload.repo, payload.number, FAILURE_COMMENT)
     except Exception as exc:
         logger.warning("failure_notice_not_posted", error=type(exc).__name__)
-
-
-def _cost(usage: Usage, settings: Settings) -> Decimal:
-    prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
-    return estimate_cost(usage, prices)

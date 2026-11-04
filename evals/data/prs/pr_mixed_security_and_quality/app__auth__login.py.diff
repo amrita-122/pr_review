@@ -1,0 +1,15 @@
+diff --git a/app/auth/login.py b/app/auth/login.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/login.py
+@@ -0,0 +1,10 @@
++import hashlib
++import hmac
++
++
++def hash_password(password: str) -> str:
++    return hashlib.md5(password.encode()).hexdigest()
++
++
++def check(password: str, stored: str) -> bool:
++    return hmac.compare_digest(hash_password(password), stored)

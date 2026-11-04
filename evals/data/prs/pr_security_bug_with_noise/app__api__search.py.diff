@@ -1,0 +1,19 @@
+diff --git a/app/api/search.py b/app/api/search.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/search.py
+@@ -0,0 +1,14 @@
++import sqlite3
++from contextlib import closing
++
++from flask import Flask, request
++
++app = Flask(__name__)
++
++
++@app.get("/search")
++def search():
++    term = request.args["q"]
++    with closing(sqlite3.connect("app.db")) as conn:
++        rows = conn.execute(f"SELECT id, name FROM items WHERE name LIKE '%{term}%'").fetchall()
++    return {"items": rows}

@@ -1,0 +1,14 @@
+diff --git a/app/utils/retry.py b/app/utils/retry.py
+new file mode 100644
+--- /dev/null
++++ b/app/utils/retry.py
+@@ -0,0 +1,9 @@
++import time
++
++
++def retry(fn, attempts: int = 3):
++    for i in range(attempts):
++        try:
++            return fn()
++        except Exception:
++            time.sleep(i)

@@ -1,0 +1,11 @@
+diff --git a/app/clients/weather.py b/app/clients/weather.py
+new file mode 100644
+--- /dev/null
++++ b/app/clients/weather.py
+@@ -0,0 +1,6 @@
++import httpx
++
++
++def get_temp(city: str) -> float:
++    resp = httpx.get("https://api.weather.test/v1", params={"q": city})
++    return resp.json()["temp"]

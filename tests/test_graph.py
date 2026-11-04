@@ -50,10 +50,14 @@ async def test_one_failing_file_does_not_fail_the_run() -> None:
             raise RuntimeError("model exploded")
         return [_finding(path)]
 
-    outcome = await review_diff(_files("good.py", "bad.py"), reviewer, LIMITS)
+    with structlog.testing.capture_logs() as logs:
+        outcome = await review_diff(_files("good.py", "bad.py"), reviewer, LIMITS)
     assert [f.file_path for f in outcome.findings] == ["good.py"]
     assert set(outcome.reviewed) == {"good.py"}
-    assert outcome.skipped == [("bad.py", "review failed")]
+    assert outcome.skipped == [("bad.py", "security review failed")]
+    failed = [e for e in logs if e["event"] == "file_review_failed"]
+    assert failed[0]["error"] == "RuntimeError" and failed[0]["detail"] == "model exploded"
+    assert "model exploded" not in outcome.skipped[0][1]  # the PR never sees provider text
 
 
 async def test_invalid_line_is_dropped_by_the_validator() -> None:
@@ -114,7 +118,11 @@ async def test_total_size_limit_skips_files_that_do_not_fit() -> None:
 
 async def test_findings_per_file_are_capped_keeping_the_most_severe() -> None:
     def make(line: int, severity: Severity) -> Finding:
-        return _finding("a.py", line).model_copy(update={"severity": severity})
+        # a different category per finding, so the aggregator does not merge them
+        category = [Category.INJECTION, Category.SECRETS, Category.AUTHZ][line - 1]
+        return _finding("a.py", line).model_copy(
+            update={"severity": severity, "category": category}
+        )
 
     async def reviewer(path: str, numbered: str) -> list[Finding]:
         return [make(1, Severity.LOW), make(2, Severity.CRITICAL), make(3, Severity.MEDIUM)]
@@ -122,7 +130,7 @@ async def test_findings_per_file_are_capped_keeping_the_most_severe() -> None:
     limits = ReviewLimits(max_files=10, max_chars_per_file=1000, max_findings_per_file=2)
     outcome = await review_diff(_files("a.py"), reviewer, limits)
     assert outcome.raw_count == 2
-    assert sorted(f.severity for f in outcome.findings) == [Severity.CRITICAL, Severity.MEDIUM]
+    assert {f.severity for f in outcome.findings} == {Severity.CRITICAL, Severity.MEDIUM}
 
 
 async def test_comment_cap_keeps_most_severe_and_records_the_drop() -> None:
@@ -131,9 +139,13 @@ async def test_comment_cap_keeps_most_severe_and_records_the_drop() -> None:
 
     async def reviewer(path: str, numbered: str) -> list[Finding]:
         sev = [Severity.LOW, Severity.HIGH, Severity.CRITICAL, Severity.MEDIUM]
-        return [_finding(path, i + 1).model_copy(update={"severity": s}) for i, s in enumerate(sev)]
+        cats = [Category.INJECTION, Category.SECRETS, Category.AUTHZ, Category.CRYPTO]
+        return [
+            _finding(path, i + 1).model_copy(update={"severity": s, "category": cats[i]})
+            for i, s in enumerate(sev)
+        ]
 
     limits = ReviewLimits(max_files=10, max_chars_per_file=1000, max_comments=2)
     outcome = await review_diff(files, reviewer, limits)
-    assert sorted(f.severity for f in outcome.findings) == [Severity.CRITICAL, Severity.HIGH]
+    assert {f.severity for f in outcome.findings} == {Severity.CRITICAL, Severity.HIGH}
     assert sorted(reason for _, reason in outcome.dropped) == ["over comment cap"] * 2

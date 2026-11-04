@@ -18,3 +18,15 @@
 {"case_id": "exec_shell_true", "file": "app/tools/convert.py", "line_start": 5, "line_end": 5, "category": "unsafe_exec"}
 {"case_id": "inj_sql_helper_subtle", "file": "app/search/query.py", "line_start": 2, "line_end": 2, "category": "injection"}
 {"case_id": "other_cors_credentials", "file": "app/main.py", "line_start": 7, "line_end": 7, "category": "other"}
+{"case_id": "q_bug_mutable_default", "file": "app/cart.py", "line_start": 1, "line_end": 2, "category": "bug"}
+{"case_id": "q_bug_off_by_one", "file": "app/utils/paging.py", "line_start": 3, "line_end": 3, "category": "bug"}
+{"case_id": "q_bug_percent_not_scaled", "file": "app/billing/discount.py", "line_start": 4, "line_end": 4, "category": "bug"}
+{"case_id": "q_err_missing_key_lookup", "file": "app/users.py", "line_start": 5, "line_end": 6, "category": "error_handling"}
+{"case_id": "q_err_http_no_status_check", "file": "app/clients/weather.py", "line_start": 6, "line_end": 6, "category": "error_handling"}
+{"case_id": "q_err_swallowed_exception", "file": "app/jobs/sync.py", "line_start": 11, "line_end": 12, "category": "error_handling"}
+{"case_id": "q_leak_conn_early_return", "file": "app/db/count.py", "line_start": 7, "line_end": 8, "category": "resource_leak"}
+{"case_id": "q_leak_file_handle", "file": "app/reports/export.py", "line_start": 2, "line_end": 2, "category": "resource_leak"}
+{"case_id": "pr_quality_bug_with_noise", "file": "app/jobs/cleanup.py", "line_start": 6, "line_end": 6, "category": "resource_leak"}
+{"case_id": "pr_security_bug_with_noise", "file": "app/api/search.py", "line_start": 13, "line_end": 13, "category": "injection"}
+{"case_id": "pr_mixed_security_and_quality", "file": "app/auth/login.py", "line_start": 6, "line_end": 6, "category": "crypto"}
+{"case_id": "pr_mixed_security_and_quality", "file": "app/utils/retry.py", "line_start": 8, "line_end": 9, "category": "error_handling"}

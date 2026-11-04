@@ -4,6 +4,7 @@ import asyncio
 import re
 import secrets
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import anthropic
@@ -24,10 +25,12 @@ from tenacity.wait import wait_base
 from app.config import Settings
 from app.review.sanitize import strip_invisible
 from app.review.schemas import Finding, ReviewResult
+from app.review.triage import Triager, make_triager
 
 logger = structlog.get_logger()
 
 PROMPT_VERSION = "security_v5"
+QUALITY_PROMPT_VERSION = "quality_v2"
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 
 # Same inputs as the fake reviewer, but async because it waits on the network.
@@ -55,13 +58,15 @@ def load_prompt(version: str = PROMPT_VERSION) -> str:
     return (_PROMPT_DIR / f"{version}.md").read_text(encoding="utf-8")
 
 
-def build_chat_model(settings: Settings) -> BaseChatModel:
+def build_chat_model(
+    settings: Settings, model: str | None = None, max_tokens: int | None = None
+) -> BaseChatModel:
     # max_retries=0: tenacity owns retries so there is exactly one place that decides them.
     return ChatAnthropic(  # type: ignore[call-arg]
-        model=settings.model_review,
+        model=model or settings.model_review,
         api_key=settings.anthropic_api_key,
         timeout=settings.model_timeout_seconds,
-        max_tokens=settings.max_output_tokens,
+        max_tokens=max_tokens or settings.max_output_tokens,
         max_retries=0,
     )
 
@@ -73,6 +78,30 @@ def build_default_reviewer(settings: Settings, prompt_version: str | None = None
         prompt=load_prompt(prompt_version or settings.prompt_version),
         timeout_seconds=settings.model_timeout_seconds,
     )
+
+
+def build_reviewers(
+    settings: Settings,
+    *,
+    agents: list[str] | None = None,
+    security_version: str | None = None,
+    quality_version: str | None = None,
+) -> dict[str, Reviewer]:
+    """One reviewer per enabled agent, sharing one chat model. Keys are the agent names."""
+    names = agents if agents is not None else settings.agent_names
+    model = build_chat_model(settings)
+    prompts = {
+        "security": security_version or settings.prompt_version,
+        "quality": quality_version or settings.quality_prompt_version,
+    }
+    return {
+        name: make_reviewer(
+            model,
+            prompt=load_prompt(prompts[name]),
+            timeout_seconds=settings.model_timeout_seconds,
+        )
+        for name in names
+    }
 
 
 MAX_NONCE_ATTEMPTS = 5
@@ -150,3 +179,53 @@ def make_reviewer(
         raise ReviewFailed("model output could not be parsed after 2 attempts")
 
     return review
+
+
+TRIAGE_MAX_TOKENS = 512  # the answer is one word; this only bounds a runaway generation
+
+
+def reviewer_key(agent: str, tier: str = "high") -> str:
+    """Key of a reviewer in the mapping handed to review_diff: "security", "security:low", ..."""
+    return agent if tier == "high" else f"{agent}:{tier}"
+
+
+@dataclass
+class ReviewSetup:
+    reviewers: dict[str, Reviewer]
+    triager: Triager | None = None
+
+
+def build_review_setup(
+    settings: Settings,
+    *,
+    agents: list[str] | None = None,
+    security_version: str | None = None,
+    quality_version: str | None = None,
+    triage: bool | None = None,
+) -> ReviewSetup:
+    """Everything review_diff needs. With triage on, each agent also gets a cheap-model reviewer
+    for files triage calls low risk, and a triager decides who gets which."""
+    names = agents if agents is not None else settings.agent_names
+    reviewers = build_reviewers(
+        settings, agents=names, security_version=security_version, quality_version=quality_version
+    )
+    if not (settings.triage_enabled if triage is None else triage):
+        return ReviewSetup(reviewers)
+    prompts = {
+        "security": security_version or settings.prompt_version,
+        "quality": quality_version or settings.quality_prompt_version,
+    }
+    cheap = build_chat_model(settings, settings.model_triage)
+    for name in names:
+        reviewers[reviewer_key(name, "low")] = make_reviewer(
+            cheap,
+            prompt=load_prompt(prompts[name]),
+            timeout_seconds=settings.model_timeout_seconds,
+        )
+    triager = make_triager(
+        build_chat_model(settings, settings.model_triage, TRIAGE_MAX_TOKENS),
+        prompt=load_prompt(settings.triage_prompt_version),
+        timeout_seconds=settings.model_timeout_seconds,
+        build_message=build_user_message,
+    )
+    return ReviewSetup(reviewers, triager)

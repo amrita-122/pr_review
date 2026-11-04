@@ -1,0 +1,10 @@
+diff --git a/app/reports/export.py b/app/reports/export.py
+new file mode 100644
+--- /dev/null
++++ b/app/reports/export.py
+@@ -0,0 +1,5 @@
++def export(rows: list[list[object]], path: str) -> str:
++    f = open(path, "w")
++    for row in rows:
++        f.write(",".join(map(str, row)) + "\n")
++    return path

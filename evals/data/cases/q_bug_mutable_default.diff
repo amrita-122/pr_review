@@ -1,0 +1,8 @@
+diff --git a/app/cart.py b/app/cart.py
+new file mode 100644
+--- /dev/null
++++ b/app/cart.py
+@@ -0,0 +1,3 @@
++def add_item(item: str, cart: list[str] = []) -> list[str]:
++    cart.append(item)
++    return cart

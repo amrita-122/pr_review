@@ -136,3 +136,92 @@ async def test_run_case_with_fake_reviewer_scores_a_perfect_hit() -> None:
     )
     assert not result.errored
     assert len(match_case(case.expected, result.findings).true_positives) == 1
+
+
+async def test_run_case_scores_only_the_bugs_the_running_agents_can_find() -> None:
+    import asyncio
+
+    from app.review.cost import Prices
+    from app.review.graph import ReviewLimits
+    from evals.run import run_case
+
+    case = next(c for c in load_cases() if c.case_id == "inj_sql_fstring")
+    quality_bug = Expected(
+        case_id=case.case_id,
+        file=case.path,
+        line_start=1,
+        line_end=1,
+        category=Category.RESOURCE_LEAK,
+    )
+    mixed = case.model_copy(update={"expected": [*case.expected, quality_bug]})
+
+    async def nothing(path: str, numbered: str) -> list[Finding]:
+        return []
+
+    args = (ReviewLimits(10, 20000), Prices(Decimal(2), Decimal(10)), Budget(Decimal(1)))
+    security_only = await run_case(mixed, {"security": nothing}, *args, asyncio.Semaphore(1))
+    both = await run_case(
+        mixed, {"security": nothing, "quality": nothing}, *args, asyncio.Semaphore(1)
+    )
+    assert [e.category for e in security_only.expected] == [Category.INJECTION]
+    assert {e.category for e in both.expected} == {Category.INJECTION, Category.RESOURCE_LEAK}
+
+
+def _pr_dir(tmp_path, expected_rows: list[str]):  # type: ignore[no-untyped-def]
+    (tmp_path / "cases").mkdir()
+    pr = tmp_path / "prs" / "pr_demo"
+    pr.mkdir(parents=True)
+    for name, body in (("a", "x = 1"), ("b", "y = 2")):
+        (pr / f"{name}.diff").write_text(
+            f"diff --git a/{name}.py b/{name}.py\n--- /dev/null\n+++ b/{name}.py\n"
+            f"@@ -0,0 +1,1 @@\n+{body}\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "expected.jsonl").write_text("\n".join(expected_rows) + "\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_multi_file_pr_cases_load_with_their_labels(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from evals.dataset import load_pr_cases
+
+    row = (
+        '{"case_id": "pr_demo", "file": "b.py", "line_start": 1, "line_end": 1,'
+        ' "category": "injection"}'
+    )
+    (case,) = load_pr_cases(_pr_dir(tmp_path, [row]))
+    assert case.case_id == "pr_demo" and set(case.files) == {"a.py", "b.py"}
+    assert [e.file for e in case.expected] == ["b.py"]
+
+
+def test_pr_case_label_for_a_file_that_is_not_in_the_pr_is_rejected(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from evals.dataset import load_pr_cases
+
+    row = (
+        '{"case_id": "pr_demo", "file": "nope.py", "line_start": 1, "line_end": 1,'
+        ' "category": "injection"}'
+    )
+    with pytest.raises(ValueError, match="unknown file"):
+        load_pr_cases(_pr_dir(tmp_path, [row]))
+
+
+def test_real_pr_cases_load_and_single_loader_ignores_pr_labels() -> None:
+    from evals.dataset import load_cases, load_pr_cases
+
+    prs = load_pr_cases()
+    assert len(prs) >= 5 and all(len(p.files) >= 2 for p in prs)
+    assert not {p.case_id for p in prs} & {c.case_id for c in load_cases()}
+
+
+def test_score_run_reports_precision_and_recall_per_agent() -> None:
+    results = [
+        _result([_exp(10, Category.INJECTION), _exp(5, Category.BUG)], [_find(10), _find(99)]),
+    ]
+    m = score_run(results)
+    per_agent = m["per_agent"]
+    assert per_agent["security"]["tp"] == 1 and per_agent["security"]["fp"] == 1  # type: ignore[index]
+    assert per_agent["quality"]["fn"] == 1 and per_agent["quality"]["recall"] == 0.0  # type: ignore[index]
+
+
+def test_score_run_counts_files_routed_to_the_cheap_model() -> None:
+    m = score_run([_result([], [], files_total=4, files_low=3), _result([], [], files_total=2)])
+    assert (m["files_total"], m["files_low"]) == (6, 3)

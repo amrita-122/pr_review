@@ -4,6 +4,8 @@ from functools import lru_cache
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.review.cost import Prices, PriceTable
+
 
 class Settings(BaseSettings):
     github_app_id: str
@@ -34,10 +36,41 @@ class Settings(BaseSettings):
     # USD per million tokens; defaults are Claude Sonnet 5.5 list prices. Estimates only.
     price_input_per_mtok: Decimal = Decimal("2")
     price_output_per_mtok: Decimal = Decimal("10")
+    # Cost routing (Phase 7). The cheap model labels files high/low risk and reviews the low ones.
+    model_triage: str = "claude-haiku-5-5"
+    triage_enabled: bool = False
+    triage_prompt_version: str = "triage_v1"
+    # Claude Haiku 5.5 list prices (prompts up to 100K tokens). Estimates only.
+    price_triage_input_per_mtok: Decimal = Decimal("0.10")
+    price_triage_output_per_mtok: Decimal = Decimal("0.50")
     prompt_version: str = "security_v5"
+    quality_prompt_version: str = "quality_v2"
+    # Which review agents run, comma separated: security, quality.
+    enabled_agents: str = "security,quality"
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "pr-review-agent"
+
+    @property
+    def price_table(self) -> PriceTable:
+        """Per-model prices: usage is reported per model, so each is priced at its own rate."""
+        return PriceTable(
+            default=Prices(self.price_input_per_mtok, self.price_output_per_mtok),
+            by_model={
+                self.model_triage: Prices(
+                    self.price_triage_input_per_mtok, self.price_triage_output_per_mtok
+                ),
+                self.model_review: Prices(self.price_input_per_mtok, self.price_output_per_mtok),
+            },
+        )
+
+    @property
+    def agent_names(self) -> list[str]:
+        names = [n.strip().lower() for n in self.enabled_agents.split(",") if n.strip()]
+        unknown = set(names) - {"security", "quality"}
+        if unknown or not names:
+            raise ValueError(f"ENABLED_AGENTS must list security and/or quality, got {names}")
+        return list(dict.fromkeys(names))
 
     @property
     def sqlalchemy_url(self) -> str:

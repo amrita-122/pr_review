@@ -1,0 +1,1507 @@
+{
+  "suite": "golden",
+  "agents": [
+    "security",
+    "quality"
+  ],
+  "triage": false,
+  "prompt_version": "security_v5",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-04T07:35:54+00:00",
+  "cases": 43,
+  "summary": {
+    "precision": {
+      "mean": 0.6635049683830171,
+      "min": 0.6341463414634146,
+      "max": 0.7222222222222222
+    },
+    "recall": {
+      "mean": 0.9285714285714285,
+      "min": 0.9285714285714286,
+      "max": 0.9285714285714286
+    },
+    "errors": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "invalid_line_rate": {
+      "mean": 0.10579710144927536,
+      "min": 0.1,
+      "max": 0.10869565217391304
+    }
+  },
+  "runs": [
+    {
+      "cases": 43,
+      "errors": 0,
+      "precision": 0.7222222222222222,
+      "recall": 0.9285714285714286,
+      "true_positives": 26,
+      "false_negatives": 2,
+      "false_positives": 10,
+      "duplicates": 0,
+      "wrong_category": 6,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.6,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 2,
+          "fn": 1,
+          "fp": 3,
+          "precision": 0.4,
+          "recall": 0.6666666666666666
+        },
+        "injection": {
+          "tp": 5,
+          "fn": 1,
+          "fp": 2,
+          "precision": 0.7142857142857143,
+          "recall": 0.8333333333333334
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 3,
+          "precision": 0.4,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 7,
+          "fn": 1,
+          "fp": 8,
+          "precision": 0.4666666666666667,
+          "recall": 0.875
+        },
+        "security": {
+          "tp": 19,
+          "fn": 1,
+          "fp": 2,
+          "precision": 0.9047619047619048,
+          "recall": 0.95
+        }
+      },
+      "files_total": 43,
+      "files_low": 0,
+      "clean_cases": 15,
+      "clean_cases_with_fp": 2,
+      "clean_false_positives": 2,
+      "invalid_line_rate": 0.1,
+      "cost_usd_total": "0.566600",
+      "cost_usd_per_case": "0.01317674418604651162790697674",
+      "tokens_in": 228315,
+      "tokens_out": 10997,
+      "latency_p50_s": 2.489654700009851,
+      "latency_p95_s": 4.134727999975439
+    },
+    {
+      "cases": 43,
+      "errors": 0,
+      "precision": 0.6341463414634146,
+      "recall": 0.9285714285714286,
+      "true_positives": 26,
+      "false_negatives": 2,
+      "false_positives": 15,
+      "duplicates": 0,
+      "wrong_category": 8,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 6,
+          "precision": 0.3333333333333333,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 2,
+          "fn": 1,
+          "fp": 5,
+          "precision": 0.2857142857142857,
+          "recall": 0.6666666666666666
+        },
+        "injection": {
+          "tp": 5,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.8333333333333334,
+          "recall": 0.8333333333333334
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 3,
+          "precision": 0.4,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 7,
+          "fn": 1,
+          "fp": 14,
+          "precision": 0.3333333333333333,
+          "recall": 0.875
+        },
+        "security": {
+          "tp": 19,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.95,
+          "recall": 0.95
+        }
+      },
+      "files_total": 43,
+      "files_low": 0,
+      "clean_cases": 15,
+      "clean_cases_with_fp": 5,
+      "clean_false_positives": 5,
+      "invalid_line_rate": 0.10869565217391304,
+      "cost_usd_total": "0.574914",
+      "cost_usd_per_case": "0.01337009302325581395348837209",
+      "tokens_in": 228327,
+      "tokens_out": 11826,
+      "latency_p50_s": 2.4077581000165083,
+      "latency_p95_s": 4.948043499985943
+    },
+    {
+      "cases": 43,
+      "errors": 0,
+      "precision": 0.6341463414634146,
+      "recall": 0.9285714285714286,
+      "true_positives": 26,
+      "false_negatives": 2,
+      "false_positives": 15,
+      "duplicates": 0,
+      "wrong_category": 8,
+      "per_category": {
+        "authz": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 5,
+          "precision": 0.375,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 2,
+          "fn": 1,
+          "fp": 5,
+          "precision": 0.2857142857142857,
+          "recall": 0.6666666666666666
+        },
+        "injection": {
+          "tp": 5,
+          "fn": 1,
+          "fp": 2,
+          "precision": 0.7142857142857143,
+          "recall": 0.8333333333333334
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 3,
+          "precision": 0.4,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 3,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 7,
+          "fn": 1,
+          "fp": 13,
+          "precision": 0.35,
+          "recall": 0.875
+        },
+        "security": {
+          "tp": 19,
+          "fn": 1,
+          "fp": 2,
+          "precision": 0.9047619047619048,
+          "recall": 0.95
+        }
+      },
+      "files_total": 43,
+      "files_low": 0,
+      "clean_cases": 15,
+      "clean_cases_with_fp": 4,
+      "clean_false_positives": 5,
+      "invalid_line_rate": 0.10869565217391304,
+      "cost_usd_total": "0.568804",
+      "cost_usd_per_case": "0.013228",
+      "tokens_in": 228387,
+      "tokens_out": 11203,
+      "latency_p50_s": 2.1366403000138234,
+      "latency_p95_s": 4.531611900019925
+    }
+  ],
+  "details": [
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "bug",
+            "title": "Delete reports success even when user does not exist"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "error_handling",
+            "title": "HTTP response status ignored in send()"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "resource_leak",
+            "title": "SQLite connection never closed"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_closing",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_logged_reraise",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_none_default",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_with_open",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "Unsanitized account value interpolated into URL path"
+          },
+          {
+            "line": 10,
+            "category": "error_handling",
+            "title": "HTTP status is never checked before parsing the response"
+          }
+        ],
+        "wrong_category": 2
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "resource_leak",
+            "title": "SQLite connection never closed"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [
+          "injection"
+        ],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "injection",
+            "title": "SQL injection via string-concatenated name filter"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 2,
+            "category": "resource_leak",
+            "title": "Cursor is never closed"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_mutable_default",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_off_by_one",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_percent_not_scaled",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_err_http_no_status_check",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_err_missing_key_lookup",
+        "errored": false,
+        "missed": [
+          "error_handling"
+        ],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "bug",
+            "title": "Unchecked None from USERS.get causes TypeError"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "q_err_swallowed_exception",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_leak_conn_early_return",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_leak_file_handle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "error_handling",
+            "title": "HTTP response status ignored in send()"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "bug",
+            "title": "Delete reports success for nonexistent user"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "bug",
+            "title": "USERS is never defined or imported in this file"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "error_handling",
+            "title": "HTTP response status ignored after send"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 13,
+            "category": "error_handling",
+            "title": "Malformed stored hash raises unhandled ValueError"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "resource_leak",
+            "title": "SQLite connection is never closed"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_closing",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_logged_reraise",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_none_default",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_with_open",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "bug",
+            "title": "Fixed relative output path \"out.png\" is overwritten on every call"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "error_handling",
+            "title": "HTTP status never checked before parsing JSON"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "resource_leak",
+            "title": "SQLite connection is never closed"
+          },
+          {
+            "line": 12,
+            "category": "bug",
+            "title": "Returns null for unknown user with 200 status"
+          },
+          {
+            "line": 9,
+            "category": "error_handling",
+            "title": "Missing query parameter causes an unhandled error"
+          }
+        ],
+        "wrong_category": 3
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [
+          "injection"
+        ],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "injection",
+            "title": "SQL injection via string-concatenated name filter"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 2,
+            "category": "resource_leak",
+            "title": "Cursor is never closed"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_mutable_default",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_off_by_one",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_percent_not_scaled",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_err_http_no_status_check",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_err_missing_key_lookup",
+        "errored": false,
+        "missed": [
+          "error_handling"
+        ],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "bug",
+            "title": "Unchecked None from USERS.get causes TypeError"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "q_err_swallowed_exception",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_leak_conn_early_return",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_leak_file_handle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 4,
+            "category": "bug",
+            "title": "CSV rows built by manual join without quoting"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "error_handling",
+            "title": "HTTP response status ignored when sending mail"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "authz_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 9,
+            "category": "bug",
+            "title": "Reports deletion success even when user does not exist"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "authz_check_bypassed",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "authz_idor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_authed_admin_route",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_docs_only",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_env_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "error_handling",
+            "title": "HTTP response status is never checked"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_hash_scrypt",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 13,
+            "category": "error_handling",
+            "title": "Malformed stored hash raises unhandled ValueError"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_md5_cache_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_param_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "resource_leak",
+            "title": "SQLite connection is never closed"
+          },
+          {
+            "line": 12,
+            "category": "bug",
+            "title": "Missing user returns null with 200 status"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_closing",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_logged_reraise",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_none_default",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_q_with_open",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_rename_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_subprocess_list",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "bug",
+            "title": "Fixed output filename in the working directory is overwritten on every call"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_test_fixture_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_type_hints",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "clean_yaml_safe_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_md5_password",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "crypto_tls_verify_off",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "injection",
+            "title": "Unvalidated account value interpolated into URL path"
+          },
+          {
+            "line": 10,
+            "category": "error_handling",
+            "title": "HTTP status not checked before parsing response"
+          }
+        ],
+        "wrong_category": 2
+      },
+      {
+        "case_id": "crypto_weak_random_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_eval_param",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "error_handling",
+            "title": "Unvalidated query param and unhandled evaluation errors"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "exec_pickle_body",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_shell_true",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "exec_yaml_load",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_os_system",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_path_traversal",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_fstring",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "resource_leak",
+            "title": "SQLite connection is never closed"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "inj_sql_helper_subtle",
+        "errored": false,
+        "missed": [
+          "injection"
+        ],
+        "false_positives": [
+          {
+            "line": 7,
+            "category": "injection",
+            "title": "SQL injection via string-built name filter"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "inj_sql_percent",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 2,
+            "category": "resource_leak",
+            "title": "Cursor is never closed"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "inj_template",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "other_cors_credentials",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_mutable_default",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_off_by_one",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_bug_percent_not_scaled",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_err_http_no_status_check",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_err_missing_key_lookup",
+        "errored": false,
+        "missed": [
+          "error_handling"
+        ],
+        "false_positives": [
+          {
+            "line": 6,
+            "category": "bug",
+            "title": "None dereference when user id is unknown"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "q_err_swallowed_exception",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_leak_conn_early_return",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "q_leak_file_handle",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 4,
+            "category": "bug",
+            "title": "CSV built by naive join without quoting"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "sec_api_key",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 8,
+            "category": "error_handling",
+            "title": "HTTP response status ignored in send()"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_db_url",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sec_jwt_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ]
+  ],
+  "total_cost_usd": "1.710318"
+}

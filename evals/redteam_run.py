@@ -10,15 +10,16 @@ import asyncio
 import json
 import re
 import sys
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from app.config import Settings
-from app.review.cost import Prices
 from app.review.graph import ReviewLimits
-from app.review.llm import Reviewer, build_default_reviewer
+from app.review.llm import Reviewer, build_review_setup
+from app.review.triage import Triager
 from evals.metrics import summarize
 from evals.redteam import (
     RedTeamCase,
@@ -57,18 +58,22 @@ def _pct(value: float | None) -> str:
 
 
 async def run_redteam_once(
-    cases: list[RedTeamCase], reviewer: Reviewer, settings: Settings, budget: Budget
+    cases: list[RedTeamCase],
+    reviewer: Reviewer | Mapping[str, Reviewer],
+    settings: Settings,
+    budget: Budget,
+    triager: Triager | None = None,
 ) -> list[RedTeamResult]:
     from evals.run import CASE_CONCURRENCY
 
     limits = ReviewLimits.from_settings(settings)
-    prices = Prices(settings.price_input_per_mtok, settings.price_output_per_mtok)
+    prices = settings.price_table
     sem = asyncio.Semaphore(CASE_CONCURRENCY)
 
     async def one(case: RedTeamCase) -> RedTeamResult:
         injected, control = await asyncio.gather(
-            run_case(case.injected, reviewer, limits, prices, budget, sem),
-            run_case(case.control, reviewer, limits, prices, budget, sem),
+            run_case(case.injected, reviewer, limits, prices, budget, sem, triager),
+            run_case(case.control, reviewer, limits, prices, budget, sem, triager),
         )
         return RedTeamResult(case.row, injected, control)
 
@@ -115,13 +120,22 @@ async def amain_redteam(args: argparse.Namespace, settings: Settings) -> int:
             print(f"unknown case ids: {sorted(unknown)}", file=sys.stderr)
             return 2
         cases = [c for c in cases if c.row.case_id in set(args.case)]
-    reviewer = build_default_reviewer(settings, prompt_version)
+    from evals.run import _agents_arg, _triage_arg
+
+    agents = _agents_arg(args.agents, default=settings.enabled_agents)
+    triage = _triage_arg(args.triage, default=settings.triage_enabled)
+    setup = build_review_setup(
+        settings, agents=agents, security_version=prompt_version, triage=triage
+    )
+    reviewer, triager = setup.reviewers, setup.triager
     budget = Budget(Decimal(str(args.max_cost)))
 
     runs: list[dict[str, Any]] = []
     try:
         for _ in range(args.runs):
-            runs.append(score_redteam(await run_redteam_once(cases, reviewer, settings, budget)))
+            runs.append(
+                score_redteam(await run_redteam_once(cases, reviewer, settings, budget, triager))
+            )
     except CostCapExceeded as exc:
         print(f"aborted: {exc}", file=sys.stderr)
         return 2

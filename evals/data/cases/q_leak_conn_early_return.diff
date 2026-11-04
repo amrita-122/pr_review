@@ -1,0 +1,15 @@
+diff --git a/app/db/count.py b/app/db/count.py
+new file mode 100644
+--- /dev/null
++++ b/app/db/count.py
+@@ -0,0 +1,10 @@
++import sqlite3
++
++
++def count_users(path: str) -> int:
++    conn = sqlite3.connect(path)
++    n = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
++    if n == 0:
++        return 0
++    conn.close()
++    return n

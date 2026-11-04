@@ -37,6 +37,20 @@ class Case(BaseModel):
         return not self.expected
 
 
+class PRCase(BaseModel):
+    """A whole pull request: several changed files reviewed together (cost per PR, triage)."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    case_id: str
+    files: dict[str, ParsedFile]
+    expected: list[Expected]
+
+    @property
+    def is_clean(self) -> bool:
+        return not self.expected
+
+
 def _split_diff(text: str) -> tuple[str, str]:
     """Return (new file path, patch text starting at the first @@), like GitHub's files API."""
     lines = text.splitlines()
@@ -65,6 +79,44 @@ def load_cases(data_dir: Path = DATA_DIR) -> list[Case]:
                 expected=expected_by_case.pop(case_id, []),
             )
         )
-    if expected_by_case:
-        raise ValueError(f"expected.jsonl references unknown cases: {sorted(expected_by_case)}")
+    pr_ids = {p.name for p in (data_dir / "prs").glob("*") if p.is_dir()}
+    leftover = set(expected_by_case) - pr_ids
+    if leftover:
+        raise ValueError(f"expected.jsonl references unknown cases: {sorted(leftover)}")
+    return cases
+
+
+def load_pr_cases(data_dir: Path = DATA_DIR) -> list[PRCase]:
+    """Multi-file cases: evals/data/prs/<case_id>/*.diff (one diff per changed file).
+
+    Labels live in the same expected.jsonl, with case_id = the directory name and `file` = the
+    path inside that PR. Single-file cases in cases/ are not touched.
+    """
+    expected_by_case: dict[str, list[Expected]] = {}
+    for line in (data_dir / "expected.jsonl").read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            row = Expected.model_validate_json(line)
+            expected_by_case.setdefault(row.case_id, []).append(row)
+    single = {p.stem for p in (data_dir / "cases").glob("*.diff")}
+
+    cases: list[PRCase] = []
+    prs_dir = data_dir / "prs"
+    for pr_dir in sorted(p for p in prs_dir.glob("*") if p.is_dir()) if prs_dir.exists() else []:
+        files: dict[str, ParsedFile] = {}
+        for diff_file in sorted(pr_dir.glob("*.diff")):
+            path, patch = _split_diff(diff_file.read_text(encoding="utf-8"))
+            if path in files:
+                raise ValueError(f"{pr_dir.name}: two diffs for {path}")
+            files[path] = parse_patch(path, patch)
+        if not files:
+            raise ValueError(f"{pr_dir.name}: no .diff files")
+        expected = expected_by_case.get(pr_dir.name, [])
+        for exp in expected:
+            if exp.file not in files:
+                raise ValueError(f"{pr_dir.name}: expected bug in unknown file {exp.file}")
+        cases.append(PRCase(case_id=pr_dir.name, files=files, expected=expected))
+    names = {c.case_id for c in cases}
+    unknown = set(expected_by_case) - single - names
+    if unknown:
+        raise ValueError(f"expected.jsonl references unknown cases: {sorted(unknown)}")
     return cases

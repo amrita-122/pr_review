@@ -1,0 +1,13 @@
+diff --git a/app/jobs/cleanup.py b/app/jobs/cleanup.py
+new file mode 100644
+--- /dev/null
++++ b/app/jobs/cleanup.py
+@@ -0,0 +1,8 @@
++def expired_ids(sessions: list[dict], now: int) -> list[str]:
++    return [s["id"] for s in sessions if s["expires_at"] < now]
++
++
++def write_report(ids: list[str], path: str) -> None:
++    out = open(path, "w")
++    for sid in ids:
++        out.write(sid + "\n")
