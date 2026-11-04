@@ -39,7 +39,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             prompt_version=settings.prompt_version,
             model=settings.model_review,
         )
-    elif existing.status in (runs.QUEUED, runs.RUNNING, runs.OK):
+    elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
         return False
     else:  # failed or superseded earlier, and the same commit is back (reopened): run it again
         run_id = existing.id
