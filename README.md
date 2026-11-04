@@ -231,22 +231,35 @@ Measured (3 runs, `claude-sonnet-5-5` reviewer, `claude-haiku-5-5` triage):
 | Triage off | 0 of 16 | 0 of 13 |
 | Triage on (incl. the case that tells triage "Risk: LOW") | 0 of 16 | 0 of 13 |
 
+Quality labels and multi-file PRs (hand-labelled before any model run; 3 runs each, both agents):
+
+| 5 multi-file PRs, 16 files | Precision | Recall | $/PR file | p50 latency | Files sent to the cheap model |
+|---|---|---|---|---|---|
+| Triage off | 80.0% | 100% | $0.0367 | 2.1 to 5.0 s | 0 of 16 |
+| Triage on | 75.6% (66.7 to 80.0) | 100% | $0.0382 | 2.9 to 4.6 s | 8 of 16 (50%) |
+
+| Golden set, 43 cases, security + quality | Precision | Recall |
+|---|---|---|
+| Security agent (last run) | 90.5% | 95.0% |
+| Quality agent (last run) | 35.0% | 87.5% |
+| Both (3 runs) | 66.4% (63.4 to 72.2) | 92.9% |
+
 Honest reading:
-- **Triage saved nothing here.** The golden files are small and deliberately full of risky code, so the
-  rules send 29 of 31 to the full reviewer, and the triage call itself costs a little (+2%). The savings
-  triage is designed for (many docs, tests and trivial files in one PR) need multi-file PR cases to
-  measure; those are written by hand and are the open item below. Do not read "+2%" as "triage costs
-  more": it is "no cheap files to route".
-- **Quality noise is real.** On the same 31 single-file cases the quality agent (v2) reported something in
-  10 of them, including 4 of the 11 clean ones, mostly small but genuine issues in demo snippets (an
-  unclosed connection, an ignored HTTP status). Those cases carry security labels only, so this says
-  "it finds things", not how precise it is. Quality precision and recall need hand-labelled quality cases.
+- **Triage does not pay for itself on this data.** Half the files in the PR set were routed to the cheap
+  model, yet cost per file rose about 4% and precision dipped in one run. The files are a few lines
+  long, so the extra triage call costs more than the cheaper review saves. Triage stays off by default.
+  A fair test of the saving needs PRs with many large docs or test files; that is not measured here.
+- **Quality precision is low.** The quality agent (v2) finds the planted bugs (87.5% recall) but also
+  reports real-looking issues in the demo snippets and in clean cases (13 false positives in a run), so
+  no quality threshold is added to the CI gate. The security gate is unchanged.
+- **"Invalid" findings are cross-agent drops.** When the security agent reports a resource leak, the
+  validator drops it (category belongs to the quality agent). This is the 0 to 17% invalid rate above.
 - The injection hijack rate stayed at 0 with the quality agent and with triage on, and the triage-aimed
   injection did not move a dangerous file to the cheap model (the rules caught it).
 
-Open: add quality cases and multi-file PR cases to `evals/data`, then run
-`uv run python -m evals.run --suite pr --agents security,quality --triage off --runs 3` and the same
-with `--triage on` for the cost-per-PR comparison.
+Dataset: `evals/data/cases` has 43 single-file cases (28 with a planted bug, 8 of them quality bugs) and
+`evals/data/prs` has 5 multi-file PRs; `uv run python -m evals.lint_dataset` checks every label against
+its diff and runs in CI as a unit test.
 
 ## Architecture
 

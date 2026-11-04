@@ -1,0 +1,9 @@
+diff --git a/app/utils/paging.py b/app/utils/paging.py
+new file mode 100644
+--- /dev/null
++++ b/app/utils/paging.py
+@@ -0,0 +1,4 @@
++def page_slice(items: list, page: int, size: int) -> list:
++    start = page * size
++    end = start + size - 1
++    return items[start:end]

@@ -1,0 +1,10 @@
+diff --git a/app/orders.py b/app/orders.py
+new file mode 100644
+--- /dev/null
++++ b/app/orders.py
+@@ -0,0 +1,5 @@
++from app.pricing import total
++
++
++def order_total(prices: list[float]) -> float:
++    return total(prices, tax_rate=0.2)

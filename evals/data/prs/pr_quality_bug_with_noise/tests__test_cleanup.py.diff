@@ -1,0 +1,10 @@
+diff --git a/tests/test_cleanup.py b/tests/test_cleanup.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_cleanup.py
+@@ -0,0 +1,5 @@
++from app.jobs.cleanup import expired_ids
++
++
++def test_expired_ids_empty():
++    assert expired_ids([], 10) == []

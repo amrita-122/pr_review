@@ -1,0 +1,10 @@
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_pricing.py
+@@ -0,0 +1,5 @@
++from app.pricing import total
++
++
++def test_total():
++    assert total([10.0], 0.2) == 12.0

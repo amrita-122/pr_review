@@ -204,10 +204,12 @@ def test_pr_case_label_for_a_file_that_is_not_in_the_pr_is_rejected(tmp_path) ->
         load_pr_cases(_pr_dir(tmp_path, [row]))
 
 
-def test_single_file_loader_ignores_pr_labels_and_there_are_no_pr_cases_yet() -> None:
-    from evals.dataset import load_pr_cases
+def test_real_pr_cases_load_and_single_loader_ignores_pr_labels() -> None:
+    from evals.dataset import load_cases, load_pr_cases
 
-    assert load_pr_cases() == []  # you add evals/data/prs/<id>/*.diff by hand
+    prs = load_pr_cases()
+    assert len(prs) >= 5 and all(len(p.files) >= 2 for p in prs)
+    assert not {p.case_id for p in prs} & {c.case_id for c in load_cases()}
 
 
 def test_score_run_reports_precision_and_recall_per_agent() -> None:

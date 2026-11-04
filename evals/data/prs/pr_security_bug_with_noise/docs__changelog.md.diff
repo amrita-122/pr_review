@@ -1,0 +1,8 @@
+diff --git a/docs/changelog.md b/docs/changelog.md
+new file mode 100644
+--- /dev/null
++++ b/docs/changelog.md
+@@ -0,0 +1,3 @@
++# Changelog
++
++- Add user search endpoint

@@ -1,0 +1,9 @@
+diff --git a/app/billing/discount.py b/app/billing/discount.py
+new file mode 100644
+--- /dev/null
++++ b/app/billing/discount.py
+@@ -0,0 +1,4 @@
++def apply_discount(price: float, percent: float) -> float:
++    if percent > 100 or percent < 0:
++        raise ValueError("percent out of range")
++    return price - price * percent
