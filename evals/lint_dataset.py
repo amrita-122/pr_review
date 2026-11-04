@@ -41,10 +41,10 @@ def lint(data_dir: Path = DATA_DIR) -> tuple[list[str], dict[str, int]]:
 
     stats = {
         "single_cases": len(cases),
-        "single_clean": sum(c.is_clean for c in cases),
+        "single_clean": sum(1 for c in cases if c.is_clean),
         "pr_cases": len(prs),
-        "pr_clean": sum(p.is_clean for p in prs),
-        "labels": sum(len(c.expected) for c in [*cases, *prs]),
+        "pr_clean": sum(1 for p in prs if p.is_clean),
+        "labels": sum(len(c.expected) for c in cases) + sum(len(p.expected) for p in prs),
     }
     for name, group in (("single", cases), ("pr", prs)):
         cats = Counter(e.category.value for c in group for e in c.expected)
