@@ -198,8 +198,7 @@ Learn: database job queues · `SELECT … FOR UPDATE SKIP LOCKED` · transaction
 - [x] 6.5 Final failure → one short comment ("review failed; push again to retry"), never a stack trace.
 **Done when:** killing the server mid-review still produces the review after restart, and 5 quick pushes give one review on the latest commit.
 Proven in tests (SQLite fakes + real Postgres): `test_review_survives_a_worker_that_died_mid_job`,
-`test_five_quick_pushes_give_one_review_on_the_latest_commit`, 8-thread claim test. Still to do on Railway:
-create the worker service (railway.worker.json) and repeat both checks on a sandbox PR.
+`test_five_quick_pushes_give_one_review_on_the_latest_commit`, 8-thread claim test. Both checks also confirmed on Railway with the worker service (railway.worker.json) on a sandbox PR.
 
 ---
 ## Phase 7 — Second agent + cost routing
