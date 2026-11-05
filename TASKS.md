@@ -222,7 +222,7 @@ save money on small files, so it stays off; quality precision is 35%, so there i
 Goal: critical findings wait for a maintainer's `/confirm`.
 Learn: LangGraph checkpointers · `interrupt` and resume · authorization checks
 
-- [ ] 8.1 Subscribe the App to the "Issue comment" event (GitHub shows any extra permission it needs).
+- [x] 8.1 Subscribe the App to the "Issue comment" event (GitHub shows any extra permission it needs).
 - [ ] 8.2 `uv add langgraph-checkpoint-postgres`; compile the graph with the Postgres checkpointer; thread_id = run id.
 - [ ] 8.3 Before posting critical findings, the graph interrupts; the bot posts
       "N critical findings pending — a maintainer can reply /confirm".

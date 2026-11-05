@@ -32,8 +32,13 @@ from app.db import runs
 from app.db.models import Job
 from app.db.session import get_session
 from app.jobs.errors import INTERNAL, JobFailure, classify
-from app.jobs.handlers import expire_pending_reviews, post_failure_notice, run_review_job
-from app.jobs.payload import REVIEW_PR, ReviewJobPayload
+from app.jobs.handlers import (
+    expire_pending_reviews,
+    post_failure_notice,
+    run_confirm_job,
+    run_review_job,
+)
+from app.jobs.payload import CONFIRM_REVIEW, REVIEW_PR, ConfirmJobPayload, ReviewJobPayload
 from app.logging import configure_logging
 from app.observability import configure_tracing
 from app.review.checkpoint import setup_checkpointer
@@ -86,10 +91,14 @@ def claim_job(session: Session, worker_id: str, now: datetime) -> ClaimedJob | N
     return ClaimedJob(job.id, job.kind, dict(job.payload), job.attempts, job.max_attempts)
 
 
-def requeue_stale(session: Session, now: datetime, lease_seconds: float) -> list[dict[str, Any]]:
+def requeue_stale(
+    session: Session, now: datetime, lease_seconds: float
+) -> list[tuple[str, dict[str, Any]]]:
     """Jobs whose worker vanished: back to the queue, or failed if they are out of attempts.
 
-    Returns the payloads of jobs that just failed for good, so the caller can tell the PR.
+    Returns (kind, payload) of jobs that just failed for good, so the caller can tell the PR.
+    A /confirm job that lost its worker puts its run back to awaiting_confirmation, so the retry
+    (or the maintainer) can claim it again instead of finding it stuck in `confirming`.
     """
     cutoff = now - timedelta(seconds=lease_seconds)
     stale = session.scalars(
@@ -97,18 +106,21 @@ def requeue_stale(session: Session, now: datetime, lease_seconds: float) -> list
         .where(Job.status == "running", Job.locked_at < cutoff)
         .with_for_update(skip_locked=True)
     ).all()
-    gave_up: list[dict[str, Any]] = []
+    gave_up: list[tuple[str, dict[str, Any]]] = []
     for job in stale:
         job.locked_at = None
         job.locked_by = None
         job.last_error = "lease expired (worker stopped)"
         if job.attempts >= job.max_attempts:
             job.status = "failed"
-            gave_up.append(dict(job.payload))
+            gave_up.append((job.kind, dict(job.payload)))
         else:
             job.status = "queued"
             job.run_after = now
     session.commit()
+    for job in stale:
+        if job.kind == CONFIRM_REVIEW and isinstance(job.payload.get("run_id"), str):
+            runs.revert_to_awaiting(session, job.payload["run_id"])
     if stale:
         logger.warning("stale_jobs_recovered", count=len(stale), failed=len(gave_up))
     return gave_up
@@ -163,10 +175,12 @@ def release_job(session: Session, job_id: int, now: datetime) -> None:
 # --- running a claimed job ------------------------------------------------------------------
 
 
-def _parse(claimed: ClaimedJob) -> ReviewJobPayload:
-    if claimed.kind != REVIEW_PR:
+def _parse(claimed: ClaimedJob) -> ReviewJobPayload | ConfirmJobPayload:
+    if claimed.kind not in (REVIEW_PR, CONFIRM_REVIEW):
         raise JobFailure(INTERNAL, False, f"unknown job kind {claimed.kind!r}"[:100])
     try:
+        if claimed.kind == CONFIRM_REVIEW:
+            return ConfirmJobPayload.model_validate(claimed.payload)
         return ReviewJobPayload.model_validate(claimed.payload)
     except ValidationError:
         raise JobFailure(INTERNAL, False, "invalid job payload") from None
@@ -175,13 +189,37 @@ def _parse(claimed: ClaimedJob) -> ReviewJobPayload:
 async def _execute(claimed: ClaimedJob, settings: Settings) -> str:
     payload = _parse(claimed)
     async with asyncio.timeout(settings.job_deadline_seconds):
+        if isinstance(payload, ConfirmJobPayload):
+            return await run_confirm_job(payload)
         return await run_review_job(payload)
+
+
+def _revert_confirm(claimed: ClaimedJob) -> None:
+    """A /confirm attempt did not finish: the review is still held, a maintainer can try again."""
+    run_id = claimed.payload.get("run_id")
+    if claimed.kind == CONFIRM_REVIEW and isinstance(run_id, str):
+        with get_session() as session:
+            runs.revert_to_awaiting(session, run_id)
 
 
 async def _on_failure(claimed: ClaimedJob, failure: JobFailure, settings: Settings) -> str:
     final = (not failure.transient) or claimed.attempts >= claimed.max_attempts
     run_id = claimed.payload.get("run_id")
     now = utcnow()
+    if claimed.kind == CONFIRM_REVIEW:
+        # A failed /confirm never fails the run and never posts "review failed": the review is
+        # still held and the maintainer can reply /confirm again.
+        _revert_confirm(claimed)
+        if final:
+            with get_session() as session:
+                fail_job(session, claimed.id, error=failure.message)
+            logger.warning("confirm_job_failed", job_id=claimed.id, reason=failure.reason)
+            return "failed"
+        delay = backoff_delay(claimed.attempts, settings.job_backoff_base_seconds)
+        with get_session() as session:
+            schedule_retry(session, claimed.id, delay_seconds=delay, error=failure.message, now=now)
+        logger.warning("confirm_job_will_retry", job_id=claimed.id, reason=failure.reason)
+        return "retry"
     if final:
         with get_session() as session:
             fail_job(session, claimed.id, error=failure.message)
@@ -230,6 +268,7 @@ async def run_claimed(claimed: ClaimedJob, settings: Settings, stop: asyncio.Eve
                     await task
                 with get_session() as session:
                     release_job(session, claimed.id, utcnow())
+                _revert_confirm(claimed)
                 logger.warning("job_released_on_shutdown", job_id=claimed.id)
                 return "released"
     finally:
@@ -243,8 +282,10 @@ async def run_claimed(claimed: ClaimedJob, settings: Settings, stop: asyncio.Eve
     return "done"
 
 
-async def _notify_gave_up(payloads: list[dict[str, Any]]) -> None:
-    for raw in payloads:
+async def _notify_gave_up(jobs: list[tuple[str, dict[str, Any]]]) -> None:
+    for kind, raw in jobs:
+        if kind == CONFIRM_REVIEW:
+            continue  # requeue_stale already put the run back to awaiting; nothing to announce
         run_id = raw.get("run_id")
         if isinstance(run_id, str):
             with get_session() as session:

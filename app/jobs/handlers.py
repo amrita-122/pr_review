@@ -31,7 +31,7 @@ from app.github.client import (
     review_exists,
 )
 from app.jobs.errors import classify
-from app.jobs.payload import ReviewJobPayload
+from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
@@ -252,6 +252,19 @@ async def post_failure_notice(payload: ReviewJobPayload) -> None:
         await post_pr_comment(token, payload.owner, payload.repo, payload.number, FAILURE_COMMENT)
     except Exception as exc:
         logger.warning("failure_notice_not_posted", error=type(exc).__name__)
+
+
+async def run_confirm_job(payload: ConfirmJobPayload) -> str:
+    """HAND (Amrita): authorize the commenter, then post the held review exactly once.
+
+    Contract with the worker (app/jobs/worker.py):
+    - Return a short outcome string ("posted", "ignored", ...) for success AND for "nothing to do";
+      a commenter without write/admin is "ignored", never an exception.
+    - RAISE on any failure (GitHub error, etc.). The worker then reverts the run to
+      awaiting_confirmation and retries; it never marks the run failed or posts a comment.
+    Order: permission -> claim -> resume -> render -> _post_once -> finish -> delete thread.
+    """
+    raise NotImplementedError("Phase 8.4: written by hand")
 
 
 async def expire_pending_reviews(
