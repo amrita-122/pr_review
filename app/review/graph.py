@@ -8,13 +8,13 @@ from typing import Annotated, Any, TypedDict
 import structlog
 from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
+from langgraph.types import Command, Send, interrupt
 
 from app.config import Settings
 from app.diff.parse import ParsedFile
 from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
 from app.review.llm import Reviewer, reviewer_key
-from app.review.schemas import Agent, Finding, ReviewFinding
+from app.review.schemas import Agent, Finding, ReviewFinding, Severity
 from app.review.triage import Risk, Triager
 from app.review.validate import Dropped, partition_findings
 
@@ -51,6 +51,7 @@ class ReviewOutcome:
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
     dropped: list[Dropped] = field(default_factory=list)  # validator drops, with reason
     raw_count: int = 0  # findings the model produced, before validation
+    pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post
     risk: dict[str, str] = field(
         default_factory=dict
     )  # triage verdict per file (empty = no triage)
@@ -65,6 +66,7 @@ class ReviewState(TypedDict):
     errors: Annotated[list[tuple[str, str]], operator.add]  # (path, reason) for failed files
     validated: list[Finding]
     dropped: list[Dropped]
+    pre_skipped: list[tuple[str, str]]  # files skipped before the graph ran (lockfiles, binaries)
 
 
 class FileTask(TypedDict):
@@ -184,8 +186,29 @@ def _validate(limits: ReviewLimits) -> Any:
     return validate
 
 
+def _gate(hold_severities: frozenset[Severity], enabled: bool) -> Any:
+    def gate(state: ReviewState) -> dict[str, Any]:
+        if not enabled:
+            return {}
+        held = sum(f.severity in hold_severities for f in state["validated"])
+        if held == 0:
+            return {}
+        # Nothing with side effects above this line: on resume this node runs again from the top.
+        approved = interrupt({"held": held})
+        if not approved:
+            return {"validated": []}  # not approved: post nothing (fail closed)
+        return {}
+
+    return gate
+
+
 def build_graph(
-    reviewers: Mapping[str, Reviewer], limits: ReviewLimits, triager: Triager | None = None
+    reviewers: Mapping[str, Reviewer],
+    limits: ReviewLimits,
+    triager: Triager | None = None,
+    *,
+    hold_severities: frozenset[Severity] = frozenset(),
+    checkpointer: Any = None,
 ) -> Any:
     graph = StateGraph(ReviewState)
     graph.add_node("prepare", _prepare(limits))
@@ -198,9 +221,34 @@ def build_graph(
         name for name in reviewers if ":" not in name
     ]  # "security:low" is a tier, not an agent
     graph.add_conditional_edges("triage", _fan_out(agents), ["review_file", "validate"])
+    graph.add_node("gate", _gate(hold_severities, enabled=checkpointer is not None))
     graph.add_edge("review_file", "validate")
-    graph.add_edge("validate", END)
-    return graph.compile()
+    graph.add_edge("validate", "gate")
+    graph.add_edge("gate", END)
+    return graph.compile(checkpointer=checkpointer)
+
+
+def _held_count(validated: list[Finding], hold_severities: frozenset[Severity]) -> int:
+    return sum(f.severity in hold_severities for f in validated)
+
+
+def _to_outcome(values: Mapping[str, Any], pending: int) -> ReviewOutcome:
+    failed = {path for path, _ in values["errors"]}
+    reviewed = {p: f for p, f in values["to_review"].items() if p not in failed}
+    return ReviewOutcome(
+        # Fail closed: a paused outcome carries NO findings, so nobody can post them by mistake.
+        findings=[] if pending else values["validated"],
+        reviewed=reviewed,
+        # The checkpointer's serializer turns tuples into lists: restore them.
+        skipped=[
+            (path, reason)
+            for path, reason in values["pre_skipped"] + values["limit_skipped"] + values["errors"]
+        ],
+        dropped=[(item, reason) for item, reason in values["dropped"]],
+        raw_count=len(values["findings"]),
+        risk=values["risk"],
+        pending=pending,
+    )
 
 
 async def review_diff(
@@ -212,6 +260,10 @@ async def review_diff(
     run_name: str | None = None,
     metadata: Mapping[str, str] | None = None,
     callbacks: list[BaseCallbackHandler] | None = None,
+    hold_severities: frozenset[Severity] = frozenset(),
+    checkpointer: Any = None,
+    thread_id: str | None = None,
+    pre_skipped: list[tuple[str, str]] | None = None,
 ) -> ReviewOutcome:
     """Review parsed files. Evals call this directly; it knows nothing about GitHub.
 
@@ -220,7 +272,9 @@ async def review_diff(
     the run (tracing, token counting).
     """
     by_agent = {Agent.SECURITY.value: reviewers} if callable(reviewers) else dict(reviewers)
-    app = build_graph(by_agent, limits, triager)
+    app = build_graph(
+        by_agent, limits, triager, hold_severities=hold_severities, checkpointer=checkpointer
+    )
     initial: ReviewState = {
         "files": dict(files),
         "to_review": {},
@@ -230,6 +284,7 @@ async def review_diff(
         "errors": [],
         "validated": [],
         "dropped": [],
+        "pre_skipped": list(pre_skipped or []),
     }
     config: dict[str, Any] = {"max_concurrency": MAX_CONCURRENT_FILES}
     if run_name:
@@ -238,16 +293,51 @@ async def review_diff(
         config["metadata"] = dict(metadata)
     if callbacks:
         config["callbacks"] = callbacks
+    if checkpointer is not None:
+        if thread_id is None:
+            raise ValueError("thread_id is required with a checkpointer")
+        config["configurable"] = {"thread_id": thread_id}
+        existing = await app.aget_state(config)
+        if existing.next:  # already paused: a job retry. Do not start again.
+            return _to_outcome(
+                existing.values, _held_count(existing.values["validated"], hold_severities)
+            )
+        if existing.values:
+            # Finished earlier (stale). Without this the findings reducer appends duplicates.
+            await checkpointer.adelete_thread(thread_id)
+
     final = await app.ainvoke(initial, config=config)
-    failed = {
-        path for path, _ in final["errors"]
-    }  # any agent failing marks the file not fully reviewed
-    reviewed = {p: f for p, f in final["to_review"].items() if p not in failed}
-    return ReviewOutcome(
-        findings=final["validated"],
-        reviewed=reviewed,
-        skipped=final["limit_skipped"] + final["errors"],
-        dropped=final["dropped"],
-        raw_count=len(final["findings"]),
-        risk=final["risk"],
+    if checkpointer is not None:
+        snap = await app.aget_state(config)
+        if snap.next:  # the gate paused
+            return _to_outcome(snap.values, _held_count(snap.values["validated"], hold_severities))
+    return _to_outcome(final, 0)
+
+
+async def resume_review(
+    thread_id: str,
+    reviewers: Reviewer | Mapping[str, Reviewer],
+    limits: ReviewLimits,
+    hold_severities: frozenset[Severity],
+    checkpointer: Any,
+    approved: bool,
+) -> ReviewOutcome:
+    """Continue a review paused at the gate. The model is not called again.
+
+    approved=False yields an outcome with NO findings; the caller must then post NOTHING (not even
+    a "No findings" review, which would be false). The /confirm path only ever resumes with True.
+    """
+    by_agent = {Agent.SECURITY.value: reviewers} if callable(reviewers) else dict(reviewers)
+    app = build_graph(
+        by_agent, limits, None, hold_severities=hold_severities, checkpointer=checkpointer
     )
+    config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
+    snapshot = await app.aget_state(config)
+    if not snapshot.next:
+        if not snapshot.values:
+            raise ValueError("no paused review for this thread")  # deleted or never held
+        # Already resumed once (e.g. posting failed afterwards and the job retries): the saved
+        # result is final, so return it instead of running the graph again.
+        return _to_outcome(snapshot.values, 0)
+    final = await app.ainvoke(Command(resume=approved), config=config)
+    return _to_outcome(final, 0)
