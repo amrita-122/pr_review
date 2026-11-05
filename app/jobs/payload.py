@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.github.webhooks import PullRequestEvent
 
 REVIEW_PR = "review_pr"
+CONFIRM_REVIEW = "confirm_review"
 
 
 class ReviewJobPayload(BaseModel):
@@ -29,3 +30,19 @@ class ReviewJobPayload(BaseModel):
             number=event.number,
             head_sha=event.head_sha,
         )
+
+
+class ConfirmJobPayload(BaseModel):
+    """A maintainer's /confirm. The permission check happens later, in the worker."""
+
+    run_id: str
+    installation_id: int
+    owner: str
+    repo: str
+    number: int
+    comment_id: int
+    commenter_login: str = Field(pattern=r"^[A-Za-z0-9-]{1,39}$")  # goes into a URL path
+
+    @property
+    def repo_full_name(self) -> str:
+        return f"{self.owner}/{self.repo}"

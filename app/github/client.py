@@ -1,3 +1,5 @@
+import re
+
 import httpx
 from pydantic import BaseModel
 
@@ -127,3 +129,29 @@ async def review_exists(
                 return False
             url, params = next_url, None
     return False
+
+
+LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
+
+
+async def get_collaborator_permission(token: str, owner: str, repo: str, login: str) -> str | None:
+    """The user's permission on the repo: admin | write | read | none, or None if GitHub says 404.
+
+    The login comes from a webhook payload, i.e. from outside: it is checked before it goes into
+    the URL path. Callers must fail CLOSED: anything but a definite admin/write means no.
+    """
+    if not LOGIN_PATTERN.fullmatch(login):
+        raise ValueError("invalid GitHub login")
+    async with github_client() as client:
+        try:
+            response = await get_with_retry(
+                client,
+                f"/repos/{owner}/{repo}/collaborators/{login}/permission",
+                headers=_headers(token),
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+    permission = response.json().get("permission")
+    return permission if isinstance(permission, str) else None
