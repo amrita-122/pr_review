@@ -195,3 +195,82 @@ async def test_delete_thread_succeeds_and_survives_errors() -> None:
             raise RuntimeError("db down")
 
     assert await delete_thread(Broken(), "run-1") is False  # logged, never raised
+
+
+# --- expiry --------------------------------------------------------------------------------
+
+
+class RecordingSaver:
+    def __init__(self) -> None:
+        self.deleted: list[str] = []
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        self.deleted.append(thread_id)
+
+
+def saver_factory(saver: RecordingSaver):  # type: ignore[no-untyped-def]
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def open_saver(_settings):  # type: ignore[no-untyped-def]
+        yield saver
+
+    return open_saver
+
+
+def mock_github() -> respx.Route:
+    from tests.helpers import token_response
+
+    respx.post("https://api.github.com/app/installations/7/access_tokens").mock(
+        return_value=token_response()
+    )
+    return respx.post(url__regex=r"https://api\.github\.com/repos/.+/issues/\d+/comments").mock(
+        return_value=httpx.Response(201, json={})
+    )
+
+
+@respx.mock
+async def test_old_held_review_expires_with_one_comment_and_no_checkpoint(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.jobs.handlers import EXPIRED_COMMENT, expire_pending_reviews
+
+    monkeypatch.setenv("CONFIRMATION_ENABLED", "true")
+    get_settings.cache_clear()
+    run_id = held_run(db_session)
+    comments = mock_github()
+    saver = RecordingSaver()
+    later = datetime.now(UTC) + timedelta(hours=73)
+
+    assert await expire_pending_reviews(get_settings(), later, saver_factory(saver)) == 1
+    assert await expire_pending_reviews(get_settings(), later, saver_factory(saver)) == 0
+
+    db_session.expire_all()
+    run = runs.get_run(db_session, run_id)
+    assert run is not None
+    assert run.status == runs.EXPIRED
+    assert saver.deleted == [run_id]
+    assert comments.call_count == 1
+    assert EXPIRED_COMMENT.encode() in comments.calls[0].request.content
+
+
+@respx.mock
+async def test_young_held_review_and_disabled_flag_do_nothing(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.jobs.handlers import expire_pending_reviews
+
+    run_id = held_run(db_session)
+    comments = mock_github()
+    later = datetime.now(UTC) + timedelta(hours=100)
+
+    assert await expire_pending_reviews(get_settings(), later) == 0  # flag off: untouched
+
+    monkeypatch.setenv("CONFIRMATION_ENABLED", "true")
+    get_settings.cache_clear()
+    soon = datetime.now(UTC) + timedelta(hours=1)
+    assert await expire_pending_reviews(get_settings(), soon, saver_factory(RecordingSaver())) == 0
+    run = runs.get_run(db_session, run_id)
+    assert run is not None
+    assert run.status == runs.AWAITING_CONFIRMATION
+    assert comments.call_count == 0

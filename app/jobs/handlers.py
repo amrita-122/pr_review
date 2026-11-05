@@ -6,6 +6,9 @@ not post a second review (see _post_once), and it will not post for a superseded
 """
 
 from collections.abc import Callable, Mapping
+from contextlib import AbstractAsyncContextManager
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import structlog
@@ -30,6 +33,7 @@ from app.github.client import (
 from app.jobs.errors import classify
 from app.jobs.payload import ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
+from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
 from app.review.graph import ReviewLimits, review_diff
 from app.review.llm import Reviewer, build_review_setup
@@ -39,6 +43,10 @@ from app.review.triage import Triager
 logger = structlog.get_logger()
 
 FAILURE_COMMENT = "Review failed. Push a new commit to try again."
+EXPIRED_COMMENT = (
+    "Held findings expired without a maintainer's confirmation and were not posted. "
+    "Push a new commit to run the review again."
+)
 
 
 def build_reviewers() -> Mapping[str, Reviewer]:
@@ -244,3 +252,45 @@ async def post_failure_notice(payload: ReviewJobPayload) -> None:
         await post_pr_comment(token, payload.owner, payload.repo, payload.number, FAILURE_COMMENT)
     except Exception as exc:
         logger.warning("failure_notice_not_posted", error=type(exc).__name__)
+
+
+async def expire_pending_reviews(
+    settings: Settings,
+    now: datetime | None = None,
+    open_saver: Callable[[Settings], AbstractAsyncContextManager[Any]] = open_checkpointer,
+) -> int:
+    """Fail closed: held reviews nobody confirmed in time are dropped, never posted.
+
+    Per run: expire (atomic, loses to a confirm that got there first) -> delete the checkpoint
+    (it holds source code) -> ONE static comment. Best effort per run: one failure must not stop
+    the others. Returns how many runs expired.
+    """
+    if not settings.confirmation_enabled:
+        return 0
+    cutoff = (now or datetime.now(UTC)) - timedelta(hours=settings.confirm_ttl_hours)
+    due = _critical(
+        lambda s: [
+            (r.id, r.repo, r.pr_number, r.installation_id) for r in runs.list_expired(s, cutoff)
+        ]
+    )
+    expired = 0
+    for run_id, repo_full_name, number, installation_id in due:
+        try:
+            if not _critical(lambda s, rid=run_id: runs.expire_run(s, rid)):  # type: ignore[misc]
+                continue  # confirmed or superseded in the meantime
+            expired += 1
+            structlog.contextvars.bind_contextvars(run_id=run_id)
+            logger.info("held_review_expired")
+            async with open_saver(settings) as saver:
+                await delete_thread(saver, run_id)
+            if installation_id is not None and _critical(
+                lambda s, rid=run_id: runs.claim_expired_comment(s, rid)  # type: ignore[misc]
+            ):
+                owner, _, repo = repo_full_name.partition("/")
+                token = await get_installation_token(installation_id)
+                await post_pr_comment(token, owner, repo, number, EXPIRED_COMMENT)
+        except Exception as exc:
+            logger.warning("expire_pending_failed", run_id=run_id, error=type(exc).__name__)
+        finally:
+            structlog.contextvars.unbind_contextvars("run_id")
+    return expired

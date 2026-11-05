@@ -15,6 +15,7 @@ import os
 import random
 import signal
 import socket
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -30,7 +31,7 @@ from app.db import runs
 from app.db.models import Job
 from app.db.session import get_session
 from app.jobs.errors import INTERNAL, JobFailure, classify
-from app.jobs.handlers import post_failure_notice, run_review_job
+from app.jobs.handlers import expire_pending_reviews, post_failure_notice, run_review_job
 from app.jobs.payload import REVIEW_PR, ReviewJobPayload
 from app.logging import configure_logging
 from app.observability import configure_tracing
@@ -38,6 +39,7 @@ from app.observability import configure_tracing
 logger = structlog.get_logger()
 
 MAX_BACKOFF_SECONDS = 600.0
+EXPIRY_CHECK_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -259,7 +261,14 @@ async def run_worker(settings: Settings, stop: asyncio.Event, *, once: bool = Fa
     """The main loop. With once=True it returns as soon as the queue is empty (used by tests)."""
     worker_id = f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
     logger.info("worker_started", worker_id=worker_id)
+    next_expiry_check = 0.0
     while not stop.is_set():
+        if time.monotonic() >= next_expiry_check:  # held reviews: once a minute is plenty
+            next_expiry_check = time.monotonic() + EXPIRY_CHECK_SECONDS
+            try:
+                await expire_pending_reviews(settings)
+            except Exception as exc:  # housekeeping must never stop the worker
+                logger.warning("expiry_check_failed", error=type(exc).__name__)
         try:
             with get_session() as session:
                 gave_up = requeue_stale(session, utcnow(), settings.job_lease_seconds)
