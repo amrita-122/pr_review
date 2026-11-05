@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 8 (optional); Phase 7 done**
+**Current phase: 8 (optional); Phase 7 done. Phase 8 code done, sandbox check pending**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -228,7 +228,7 @@ Learn: LangGraph checkpointers · `interrupt` and resume · authorization checks
       "N critical findings pending — a maintainer can reply /confirm".
 - [x] 8.4 On an issue comment containing `/confirm`: check the commenter has write or admin permission
       (collaborator permission endpoint). Otherwise ignore. If allowed, resume the graph.
-- [ ] 8.5 Decide what happens if nobody confirms (expire, or post after N hours) → ADR.
+- [x] 8.5 Decide what happens if nobody confirms (expire, or post after N hours) → ADR.
 **Done when:** `/confirm` from a maintainer posts the findings; from anyone else it does nothing.
 
 ---
