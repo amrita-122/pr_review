@@ -298,3 +298,17 @@ def list_expired(session: Session, cutoff: datetime) -> list[ReviewRun]:
             )
         ).all()
     )
+
+
+def list_superseded_holds(session: Session, repo: str, pr_number: int) -> list[str]:
+    """Ids of held runs of this PR that a newer push replaced: their checkpoints can go."""
+    return list(
+        session.scalars(
+            select(ReviewRun.id).where(
+                ReviewRun.repo == repo,
+                ReviewRun.pr_number == pr_number,
+                ReviewRun.status == SUPERSEDED,
+                ReviewRun.awaiting_since.is_not(None),
+            )
+        ).all()
+    )
