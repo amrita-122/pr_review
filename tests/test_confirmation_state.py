@@ -184,7 +184,7 @@ def test_checkpoint_conninfo_is_plain_libpq_with_timeouts(monkeypatch: pytest.Mo
     assert url.startswith("postgresql://u:p@h:5432/db?")
     assert "+psycopg" not in url
     assert "connect_timeout=5" in url
-    assert "statement_timeout" in url
+    assert "options=-c%20statement_timeout%3D15000" in url  # libpq wants %20, not +
 
 
 async def test_delete_thread_succeeds_and_survives_errors() -> None:

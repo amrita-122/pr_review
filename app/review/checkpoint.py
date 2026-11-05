@@ -7,7 +7,7 @@ as its run is posted, expired or superseded, and never log what is inside.
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import structlog
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -24,7 +24,7 @@ def checkpoint_conninfo(settings: Settings) -> str:
     query = dict(parse_qsl(parts.query))
     query.setdefault("connect_timeout", str(settings.db_connect_timeout_seconds))
     query.setdefault("options", f"-c statement_timeout={settings.db_statement_timeout_ms}")
-    return urlunsplit(parts._replace(query=urlencode(query)))
+    return urlunsplit(parts._replace(query=urlencode(query, quote_via=quote)))
 
 
 @asynccontextmanager

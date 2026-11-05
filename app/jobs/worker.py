@@ -15,6 +15,7 @@ import os
 import random
 import signal
 import socket
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from app.jobs.handlers import expire_pending_reviews, post_failure_notice, run_r
 from app.jobs.payload import REVIEW_PR, ReviewJobPayload
 from app.logging import configure_logging
 from app.observability import configure_tracing
+from app.review.checkpoint import setup_checkpointer
 
 logger = structlog.get_logger()
 
@@ -307,10 +309,16 @@ async def amain() -> None:
     settings = get_settings()
     configure_logging()
     configure_tracing(settings)
+    if settings.confirmation_enabled:
+        await setup_checkpointer(settings)  # the checkpointer's own tables; idempotent
     stop = asyncio.Event()
     _install_signal_handlers(asyncio.get_running_loop(), stop)
     await run_worker(settings, stop)
 
 
 if __name__ == "__main__":
-    asyncio.run(amain())
+    if sys.platform == "win32":
+        # psycopg's async mode (the checkpointer) cannot use Windows' default Proactor loop.
+        asyncio.run(amain(), loop_factory=asyncio.SelectorEventLoop)
+    else:
+        asyncio.run(amain())
