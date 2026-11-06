@@ -54,6 +54,7 @@ class ReviewRun(Base):
     pr_number: Mapped[int] = mapped_column(Integer)
     head_sha: Mapped[str] = mapped_column(String)
     # queued | running | ok | failed | superseded (a newer push replaced it; it must not post)
+    # | awaiting_confirmation | confirming | expired (Phase 8)
     status: Mapped[str] = mapped_column(String)
     prompt_version: Mapped[str] = mapped_column(String)
     model: Mapped[str] = mapped_column(String)
@@ -70,6 +71,17 @@ class ReviewRun(Base):
     failure_comment_posted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
     )
+    # Phase 8 (human confirmation). Statuses added: awaiting_confirmation | confirming | expired.
+    installation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # set when held
+    awaiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pending_comment_posted: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
+    expired_comment_posted: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
+    confirmed_by: Mapped[str | None] = mapped_column(String, nullable=True)  # GitHub login
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class FindingRow(Base):

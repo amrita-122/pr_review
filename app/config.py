@@ -5,6 +5,7 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.review.cost import Prices, PriceTable
+from app.review.schemas import Severity
 
 
 class Settings(BaseSettings):
@@ -47,6 +48,10 @@ class Settings(BaseSettings):
     quality_prompt_version: str = "quality_v2"
     # Which review agents run, comma separated: security, quality.
     enabled_agents: str = "security,quality"
+    # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
+    confirmation_enabled: bool = False
+    confirm_ttl_hours: float = 72.0
+    confirm_severities: str = "critical"  # comma separated Severity values
     langsmith_tracing: bool = False
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str = "pr-review-agent"
@@ -71,6 +76,22 @@ class Settings(BaseSettings):
         if unknown or not names:
             raise ValueError(f"ENABLED_AGENTS must list security and/or quality, got {names}")
         return list(dict.fromkeys(names))
+
+    @property
+    def held_severities(self) -> frozenset[Severity]:
+        names = [n.strip().lower() for n in self.confirm_severities.split(",") if n.strip()]
+        try:
+            held = frozenset(Severity(n) for n in names)
+        except ValueError:
+            raise ValueError(f"CONFIRM_SEVERITIES has an unknown severity: {names}") from None
+        if not held:
+            raise ValueError("CONFIRM_SEVERITIES must not be empty")
+        return held
+
+    @property
+    def psycopg_url(self) -> str:
+        """Plain libpq URL for the LangGraph checkpointer (it uses psycopg, not SQLAlchemy)."""
+        return self.sqlalchemy_url.replace("postgresql+psycopg://", "postgresql://", 1)
 
     @property
     def sqlalchemy_url(self) -> str:

@@ -28,6 +28,22 @@ target_metadata = Base.metadata
 # ... etc.
 
 
+# Tables owned by langgraph-checkpoint-postgres (created by its own setup()); not in our models.
+CHECKPOINT_TABLES = {
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+    "checkpoint_migrations",
+}
+
+
+def include_object(
+    obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
+) -> bool:
+    """Autogenerate must never propose dropping the checkpointer's tables."""
+    return not (type_ == "table" and reflected and name in CHECKPOINT_TABLES)
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -44,6 +60,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -66,7 +83,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection, target_metadata=target_metadata, include_object=include_object
+        )
 
         with context.begin_transaction():
             context.run_migrations()

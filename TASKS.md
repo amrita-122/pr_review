@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 8 (optional); Phase 7 done**
+**Current phase: 9; Phase 8 done**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -222,14 +222,19 @@ save money on small files, so it stays off; quality precision is 35%, so there i
 Goal: critical findings wait for a maintainer's `/confirm`.
 Learn: LangGraph checkpointers · `interrupt` and resume · authorization checks
 
-- [ ] 8.1 Subscribe the App to the "Issue comment" event (GitHub shows any extra permission it needs).
-- [ ] 8.2 `uv add langgraph-checkpoint-postgres`; compile the graph with the Postgres checkpointer; thread_id = run id.
-- [ ] 8.3 Before posting critical findings, the graph interrupts; the bot posts
+- [x] 8.1 Subscribe the App to the "Issue comment" event (GitHub shows any extra permission it needs).
+- [x] 8.2 `uv add langgraph-checkpoint-postgres`; compile the graph with the Postgres checkpointer; thread_id = run id.
+- [x] 8.3 Before posting critical findings, the graph interrupts; the bot posts
       "N critical findings pending — a maintainer can reply /confirm".
-- [ ] 8.4 On an issue comment containing `/confirm`: check the commenter has write or admin permission
+- [x] 8.4 On an issue comment containing `/confirm`: check the commenter has write or admin permission
       (collaborator permission endpoint). Otherwise ignore. If allowed, resume the graph.
-- [ ] 8.5 Decide what happens if nobody confirms (expire, or post after N hours) → ADR.
+- [x] 8.5 Decide what happens if nobody confirms (expire, or post after N hours) → ADR.
 **Done when:** `/confirm` from a maintainer posts the findings; from anyone else it does nothing.
+Proven: 367 unit tests (webhook filters, permission matrix, exactly-once, push after hold, failed post then
+retry, expiry, hold -> confirm -> one review) plus real-Postgres checkpointer tests. On the sandbox: a held
+finding showed only the pending comment, the owner's `/confirm` posted the review once, a redelivery posted
+nothing, a push after a hold left the old hold inert. A non-maintainer's `/confirm` was not tried with a real
+second account (unit-tested only). ADR 0007 accepted.
 
 ---
 ## Phase 9 — Ship and present

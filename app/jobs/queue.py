@@ -9,7 +9,7 @@ from app.config import Settings
 from app.db import runs
 from app.db.models import Job
 from app.github.webhooks import PullRequestEvent
-from app.jobs.payload import REVIEW_PR, ReviewJobPayload
+from app.jobs.payload import CONFIRM_REVIEW, REVIEW_PR, ConfirmJobPayload, ReviewJobPayload
 
 logger = structlog.get_logger()
 
@@ -39,7 +39,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             prompt_version=settings.prompt_version,
             model=settings.model_review,
         )
-    elif existing.status in (runs.QUEUED, runs.RUNNING, runs.OK):
+    elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
         return False
     else:  # failed or superseded earlier, and the same commit is back (reopened): run it again
         run_id = existing.id
@@ -52,5 +52,25 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
     payload = ReviewJobPayload.from_event(event, run_id)
     session.add(
         Job(kind=REVIEW_PR, payload=payload.model_dump(), max_attempts=settings.job_max_attempts)
+    )
+    return True
+
+
+def enqueue_confirm(session: Session, payload: ConfirmJobPayload, settings: Settings) -> bool:
+    """Queue a /confirm for the PR's held run. Adds a row but does NOT commit (same transaction as
+    the delivery record). Returns False, adding nothing, when no run of this PR is waiting.
+
+    The payload's run_id is re-checked here against the database: the webhook never trusts the
+    comment for anything but "who" and "which PR".
+    """
+    run = runs.get_awaiting_for_pr(session, payload.repo_full_name, payload.number)
+    if run is None or run.id != payload.run_id:
+        return False
+    session.add(
+        Job(
+            kind=CONFIRM_REVIEW,
+            payload=payload.model_dump(),
+            max_attempts=settings.job_max_attempts,
+        )
     )
     return True

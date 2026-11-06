@@ -15,6 +15,7 @@ dependencies = [
     "httpx>=0.28.1",
     "langchain-anthropic>=1.7.5",
     "langgraph>=1.2.14",
+    "langgraph-checkpoint-postgres>=3.2.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyjwt[crypto]>=2.15.1",

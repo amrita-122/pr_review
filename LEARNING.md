@@ -22,7 +22,9 @@
 | Prompt injection: threat model, red-teaming, defences | 5 | Not started | |
 | Postgres job queue, SKIP LOCKED | 6 | Not started | |
 | Parallel agents, aggregation, model routing | 7 | Not started | |
-| Checkpointers, interrupt/resume | 8 | Not started | |
+| Checkpointers, interrupt/resume | 8 | Implemented with help | 609724a, 0702b04, 7491e1d |
+| Authorization checks (server-side permission lookup, fail closed) | 8 | Implemented with help | 0702b04 |
+| Untrusted webhook input beyond PR code (comment events) | 8 | Implemented with help | a1c64f3 |
 
 Status: Not started → Learning → Implemented with help → Implemented independently
 

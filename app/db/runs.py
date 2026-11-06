@@ -21,7 +21,11 @@ RUNNING = "running"
 OK = "ok"
 FAILED = "failed"
 SUPERSEDED = "superseded"
-IN_FLIGHT = (QUEUED, RUNNING)
+AWAITING_CONFIRMATION = "awaiting_confirmation"  # held for a maintainer's /confirm (Phase 8)
+CONFIRMING = "confirming"  # a /confirm was accepted; the held review is being posted
+EXPIRED = "expired"  # nobody confirmed in time; never posted
+# A newer push replaces all of these. (A held or confirming run for an old commit must not post.)
+IN_FLIGHT = (QUEUED, RUNNING, AWAITING_CONFIRMATION, CONFIRMING)
 
 
 def get_run(session: Session, run_id: str) -> ReviewRun | None:
@@ -189,3 +193,122 @@ def save_findings(
         for f, is_posted, reason in rows
     )
     session.commit()
+
+
+# --- Phase 8: human confirmation ------------------------------------------------------------
+
+
+def mark_awaiting(session: Session, run_id: str, *, installation_id: int) -> bool:
+    """running -> awaiting_confirmation. False if the run is gone or no longer running
+    (a superseded run must not become pending)."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status.in_((RUNNING, AWAITING_CONFIRMATION)))
+        .values(
+            status=AWAITING_CONFIRMATION,
+            installation_id=installation_id,
+            awaiting_since=datetime.now(UTC),
+        )
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def get_awaiting_for_pr(session: Session, repo: str, pr_number: int) -> ReviewRun | None:
+    """The run of this PR waiting for /confirm, if any (a push supersedes older ones)."""
+    return session.scalars(
+        select(ReviewRun)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.status == AWAITING_CONFIRMATION,
+        )
+        .order_by(ReviewRun.started_at.desc())
+    ).first()
+
+
+def claim_confirmation(session: Session, run_id: str, *, login: str, now: datetime) -> bool:
+    """awaiting_confirmation -> confirming, atomically. True for exactly ONE caller per hold."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(status=CONFIRMING, confirmed_by=login, confirmed_at=now)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def revert_to_awaiting(session: Session, run_id: str) -> None:
+    """A confirm attempt failed: the review is still held, so a maintainer can try again."""
+    session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status == CONFIRMING)
+        .values(status=AWAITING_CONFIRMATION, confirmed_by=None, confirmed_at=None)
+    )
+    session.commit()
+
+
+def claim_pending_comment(session: Session, run_id: str) -> bool:
+    """True exactly once per run: the right to post the 'N findings pending' comment."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(
+            ReviewRun.id == run_id,
+            ReviewRun.pending_comment_posted.is_(False),
+            ReviewRun.status == AWAITING_CONFIRMATION,
+        )
+        .values(pending_comment_posted=True)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def expire_run(session: Session, run_id: str) -> bool:
+    """awaiting_confirmation -> expired, atomically (a confirm that won the race keeps its run)."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(status=EXPIRED, finished_at=datetime.now(UTC))
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def claim_expired_comment(session: Session, run_id: str) -> bool:
+    """True exactly once per run: the right to post the 'expired' comment."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(
+            ReviewRun.id == run_id,
+            ReviewRun.expired_comment_posted.is_(False),
+            ReviewRun.status == EXPIRED,
+        )
+        .values(expired_comment_posted=True)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def list_expired(session: Session, cutoff: datetime) -> list[ReviewRun]:
+    """Held runs older than the cutoff. The caller expires each with expire_run()."""
+    return list(
+        session.scalars(
+            select(ReviewRun).where(
+                ReviewRun.status == AWAITING_CONFIRMATION, ReviewRun.awaiting_since < cutoff
+            )
+        ).all()
+    )
+
+
+def list_superseded_holds(session: Session, repo: str, pr_number: int) -> list[str]:
+    """Ids of held runs of this PR that a newer push replaced: their checkpoints can go."""
+    return list(
+        session.scalars(
+            select(ReviewRun.id).where(
+                ReviewRun.repo == repo,
+                ReviewRun.pr_number == pr_number,
+                ReviewRun.status == SUPERSEDED,
+                ReviewRun.awaiting_since.is_not(None),
+            )
+        ).all()
+    )

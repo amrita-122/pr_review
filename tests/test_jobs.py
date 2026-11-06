@@ -442,7 +442,7 @@ def test_stale_job_out_of_attempts_fails_and_is_reported(db_session: Session) ->
         )
     )
     db_session.commit()
-    assert worker.requeue_stale(db_session, now, 600) == [payload]
+    assert worker.requeue_stale(db_session, now, 600) == [("x", payload)]
     assert job_of(db_session).status == "failed"
 
 

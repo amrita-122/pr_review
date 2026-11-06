@@ -5,7 +5,10 @@ any failure; the worker decides about retries. It is safe to run twice for the s
 not post a second review (see _post_once), and it will not post for a superseded run.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import structlog
@@ -21,6 +24,7 @@ from app.github.auth import get_installation_token, invalidate_installation_toke
 from app.github.client import (
     FILES_PER_PAGE,
     ReviewComment,
+    get_collaborator_permission,
     get_pr_head_sha,
     list_pr_files,
     post_pr_comment,
@@ -28,17 +32,33 @@ from app.github.client import (
     review_exists,
 )
 from app.jobs.errors import classify
-from app.jobs.payload import ReviewJobPayload
+from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
+from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
-from app.review.graph import ReviewLimits, review_diff
+from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
 from app.review.render import render_comment, render_summary
+from app.review.schemas import Severity
 from app.review.triage import Triager
 
 logger = structlog.get_logger()
 
 FAILURE_COMMENT = "Review failed. Push a new commit to try again."
+EXPIRED_COMMENT = (
+    "Held findings expired without a maintainer's confirmation and were not posted. "
+    "Push a new commit to run the review again."
+)
+
+
+def pending_comment(held: int, severities: frozenset[Severity]) -> str:
+    """Static text. It carries a count and our own severity names, never anything from the PR."""
+    names = "/".join(sorted(s.value for s in severities))
+    what = f"{held} {names} finding(s)" if held > 0 else f"{names.capitalize()} finding(s)"
+    return (
+        f"{what} pending. The review is held until a maintainer with write access "
+        "replies `/confirm`."
+    )
 
 
 def build_reviewers() -> Mapping[str, Reviewer]:
@@ -83,7 +103,8 @@ def _bind_context(payload: ReviewJobPayload) -> None:
 
 
 async def run_review_job(payload: ReviewJobPayload) -> str:
-    """Review one PR head. Returns "posted", "already_posted" or "superseded"; raises JobFailure."""
+    """Review one PR head. Returns "posted", "pending" (held), "already_posted", "superseded" or
+    "already_handled"; raises JobFailure."""
     _bind_context(payload)
     settings = get_settings()
     usage_handler = UsageMetadataCallbackHandler()
@@ -121,10 +142,55 @@ async def run_review_job(payload: ReviewJobPayload) -> str:
         )
 
 
+@asynccontextmanager
+async def _checkpointer_scope(settings: Settings) -> AsyncIterator[Any]:
+    """The checkpointer while human confirmation is on, otherwise None (graph runs as before)."""
+    if not settings.confirmation_enabled:
+        yield None
+        return
+    async with open_checkpointer(settings) as saver:
+        yield saver
+
+
+async def _announce_pending(payload: ReviewJobPayload, held: int, settings: Settings) -> str:
+    """The review is held. Record it and say so ONCE. Never raises after the hold is recorded:
+    a failed comment must not re-run the (paid) review."""
+    run_id = payload.run_id
+    if not _critical(
+        lambda s: runs.mark_awaiting(s, run_id, installation_id=payload.installation_id)
+    ):
+        return "superseded"  # a newer push replaced this run while it was reviewing
+    logger.info("review_held", held=held)
+    try:
+        if _critical(lambda s: runs.claim_pending_comment(s, run_id)):
+            token = await get_installation_token(payload.installation_id)
+            text = pending_comment(held, settings.held_severities)
+            await post_pr_comment(token, payload.owner, payload.repo, payload.number, text)
+    except Exception as exc:
+        logger.warning("pending_comment_not_posted", error=type(exc).__name__)
+    return "pending"
+
+
+async def _drop_superseded_holds(saver: Any, payload: ReviewJobPayload) -> None:
+    """Checkpoints hold source code: remove those of held runs a newer push replaced."""
+    stale = _critical(
+        lambda s: runs.list_superseded_holds(s, payload.repo_full_name, payload.number)
+    )
+    for stale_id in stale:
+        await delete_thread(saver, stale_id)
+
+
 async def _run(
     payload: ReviewJobPayload, settings: Settings, usage_handler: UsageMetadataCallbackHandler
 ) -> str:
     run_id = payload.run_id
+    # A retry of a job whose review already paused (or finished) must not start the review again.
+    current = _critical(lambda s: runs.get_run(s, run_id))
+    if current is not None and current.status == runs.AWAITING_CONFIRMATION:
+        return await _announce_pending(payload, 0, settings)
+    if current is not None and current.status in (runs.CONFIRMING, runs.EXPIRED, runs.OK):
+        logger.info("run_skipped", reason=f"already {current.status}")
+        return "already_handled"
     if not _critical(
         lambda s: runs.mark_running(
             s, run_id, prompt_version=settings.prompt_version, model=settings.model_review
@@ -156,37 +222,38 @@ async def _run(
     if _critical(lambda s: runs.is_superseded(s, run_id)):  # don't pay for a stale review
         return "superseded"
 
-    outcome = await review_diff(
-        parsed_files,
-        build_reviewers(),
-        ReviewLimits.from_settings(settings),
-        triager=build_triager(),
-        run_name=f"review {payload.repo_full_name}#{payload.number}",
-        metadata={
-            "repo": payload.repo_full_name,
-            "pr_number": str(payload.number),
-            "head_sha": payload.head_sha,
-            "prompt_version": settings.prompt_version,
-            "model": settings.model_review,
-            "run_id": run_id,
-        },
-        callbacks=[usage_handler],
-    )
-    _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
+    async with _checkpointer_scope(settings) as saver:
+        if saver is not None:
+            await _drop_superseded_holds(saver, payload)
+        outcome = await review_diff(
+            parsed_files,
+            build_reviewers(),
+            ReviewLimits.from_settings(settings),
+            triager=build_triager(),
+            run_name=f"review {payload.repo_full_name}#{payload.number}",
+            metadata={
+                "repo": payload.repo_full_name,
+                "pr_number": str(payload.number),
+                "head_sha": payload.head_sha,
+                "prompt_version": settings.prompt_version,
+                "model": settings.model_review,
+                "run_id": run_id,
+            },
+            callbacks=[usage_handler],
+            hold_severities=settings.held_severities if saver is not None else frozenset(),
+            checkpointer=saver,
+            thread_id=run_id if saver is not None else None,
+            pre_skipped=skipped,
+        )
+        if outcome.pending:
+            # Nothing is saved or posted yet: the held findings only count once confirmed.
+            result = await _announce_pending(payload, outcome.pending, settings)
+            if result == "superseded":
+                await delete_thread(saver, run_id)
+            return result
 
-    overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
-    merged = sum(reason == MERGED for _, reason in outcome.dropped)
-    summary = render_summary(
-        len(outcome.reviewed),
-        outcome.findings,
-        skipped + outcome.skipped,
-        overflow=overflow,
-        merged=merged,
-    )
-    comments = [
-        ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
-        for f in outcome.findings
-    ]
+    _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
+    summary, comments = _render(outcome)
     result = await _post_once(payload, token, summary, comments)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
@@ -232,6 +299,20 @@ async def _post_once(
     return "posted"
 
 
+def _render(outcome: ReviewOutcome) -> tuple[str, list[ReviewComment]]:
+    """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
+    overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
+    merged = sum(reason == MERGED for _, reason in outcome.dropped)
+    summary = render_summary(
+        len(outcome.reviewed), outcome.findings, outcome.skipped, overflow=overflow, merged=merged
+    )
+    comments = [
+        ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
+        for f in outcome.findings
+    ]
+    return summary, comments
+
+
 async def post_failure_notice(payload: ReviewJobPayload) -> None:
     """One short static comment after the final failure. Best effort: never raises.
 
@@ -244,3 +325,121 @@ async def post_failure_notice(payload: ReviewJobPayload) -> None:
         await post_pr_comment(token, payload.owner, payload.repo, payload.number, FAILURE_COMMENT)
     except Exception as exc:
         logger.warning("failure_notice_not_posted", error=type(exc).__name__)
+
+
+async def run_confirm_job(payload: ConfirmJobPayload) -> str:
+    run_id = payload.run_id
+    structlog.contextvars.bind_contextvars(run_id=run_id, pr_number=payload.number)
+    settings = get_settings()
+
+    # 1. Permission, asked of GitHub (the comment's own author_association is only a hint).
+    token = await get_installation_token(payload.installation_id)
+    permission = await get_collaborator_permission(
+        token, payload.owner, payload.repo, payload.commenter_login
+    )
+    if not is_allowed(permission):
+        logger.info("confirm_ignored", reason="not_allowed")
+        return "ignored"  # not an error: a retry would not change the answer
+
+    # 2. Claim: awaiting_confirmation -> confirming, atomically. Losing is not a failure.
+    if not _critical(
+        lambda s: runs.claim_confirmation(
+            s, run_id, login=payload.commenter_login, now=datetime.now(UTC)
+        )
+    ):
+        logger.info("confirm_ignored", reason="not_claimable")
+        return "ignored"
+
+    run = _critical(lambda s: runs.get_run(s, run_id))
+    if run is None:
+        return "ignored"
+    review = ReviewJobPayload(
+        run_id=run_id,
+        installation_id=payload.installation_id,
+        owner=payload.owner,
+        repo=payload.repo,
+        number=payload.number,
+        head_sha=run.head_sha,
+    )
+
+    # 3. A retry after a post that succeeded: do not resume a finished thread.
+    if run.posted_at is not None:
+        _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
+        async with open_checkpointer(settings) as saver:
+            await delete_thread(saver, run_id)
+        return "already_posted"
+
+    # 4. Resume the held graph from Postgres. Nothing calls the model.
+    async with open_checkpointer(settings) as saver:
+        outcome = await resume_review(
+            run_id,
+            build_reviewers(),
+            ReviewLimits.from_settings(settings),
+            settings.held_severities,
+            saver,
+            approved=True,
+        )
+
+        # The held findings are only now final: record them (posted or not is set when posted).
+        _record(
+            "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
+        )
+
+        # 5. Render, 6. post once (re-checks head SHA and the marker)
+        summary, comments = _render(outcome)
+        result = await _post_once(review, token, summary, comments)
+
+        # 7. Finish. _post_once already marked a superseded run.
+        if result != "superseded":
+            _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
+
+        # 8. The checkpoint holds source code: delete it in every end state.
+        await delete_thread(saver, run_id)
+    return result
+
+
+def is_allowed(permission: str | None) -> bool:
+    """Fail closed: only admin and write may confirm. Everything else, including None, may not."""
+    return permission in {"admin", "write"}
+
+
+async def expire_pending_reviews(
+    settings: Settings,
+    now: datetime | None = None,
+    open_saver: Callable[[Settings], AbstractAsyncContextManager[Any]] = open_checkpointer,
+) -> int:
+    """Fail closed: held reviews nobody confirmed in time are dropped, never posted.
+
+    Per run: expire (atomic, loses to a confirm that got there first) -> delete the checkpoint
+    (it holds source code) -> ONE static comment. Best effort per run: one failure must not stop
+    the others. Returns how many runs expired.
+    """
+    if not settings.confirmation_enabled:
+        return 0
+    cutoff = (now or datetime.now(UTC)) - timedelta(hours=settings.confirm_ttl_hours)
+    due = _critical(
+        lambda s: [
+            (r.id, r.repo, r.pr_number, r.installation_id) for r in runs.list_expired(s, cutoff)
+        ]
+    )
+    expired = 0
+    for run_id, repo_full_name, number, installation_id in due:
+        try:
+            if not _critical(lambda s, rid=run_id: runs.expire_run(s, rid)):  # type: ignore[misc]
+                continue  # confirmed or superseded in the meantime
+            expired += 1
+            structlog.contextvars.bind_contextvars(run_id=run_id)
+            logger.info("held_review_expired")
+            async with open_saver(settings) as saver:
+                await delete_thread(saver, run_id)
+            if installation_id is not None and _critical(
+                lambda s, rid=run_id: runs.claim_expired_comment(s, rid)  # type: ignore[misc]
+            ):
+                owner, _, repo = repo_full_name.partition("/")
+                token = await get_installation_token(installation_id)
+                await post_pr_comment(token, owner, repo, number, EXPIRED_COMMENT)
+        except Exception as exc:
+            logger.warning("expire_pending_failed", run_id=run_id, error=type(exc).__name__)
+        finally:
+            structlog.contextvars.unbind_contextvars("run_id")
+    return expired
