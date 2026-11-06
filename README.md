@@ -261,6 +261,44 @@ Dataset: `evals/data/cases` has 43 single-file cases (28 with a planted bug, 8 o
 `evals/data/prs` has 5 multi-file PRs; `uv run python -m evals.lint_dataset` checks every label against
 its diff and runs in CI as a unit test.
 
+## Phase 8 — Human in the loop (`/confirm`)
+
+What works now: with `CONFIRMATION_ENABLED=true`, a review that contains a critical finding is **held**.
+Nothing about the finding is posted. The PR gets one static comment ("N critical finding(s) pending. The
+review is held until a maintainer with write access replies `/confirm`."), and the full review is posted
+only after a maintainer replies `/confirm`. Reviews without a held finding behave exactly as before.
+The flag is off by default; `CONFIRM_SEVERITIES` (default `critical`) chooses what is held.
+
+- **Pause and resume**: a `gate` node after `validate` calls LangGraph `interrupt()`. State is stored by the
+  Postgres checkpointer (`thread_id` = run id), so the pause survives restarts and the model is **not
+  called again** on resume. `review_diff` stays pure: the checkpointer is an optional argument, so the
+  evals are unchanged.
+- **Who may confirm**: the `issue_comment` webhook is HMAC-verified like every event, then accepts only
+  a `created` comment on a PR, from a non-Bot user, whose body is exactly `/confirm`, on a PR that has a
+  held run. The worker then asks GitHub for the commenter's permission and proceeds only for `admin` or
+  `write` (404, `read`, `none`, anything else: ignored; a GitHub error: retry, never post).
+- **Exactly once**: `awaiting_confirmation -> confirming` is one atomic update, so two maintainers
+  confirming at once resume it once. A failed confirm returns the run to waiting instead of failing it.
+  The existing head-SHA check and hidden marker still stop stale or duplicate reviews.
+- **Fail closed**: a held review nobody confirms expires after 72 hours (`CONFIRM_TTL_HOURS`) and is never
+  auto-posted; one static comment says to push again. A newer push supersedes a held run.
+- **Checkpoints hold source code**: the thread is deleted when the run is posted, expired or superseded,
+  and only an allow-list of our own types can be read back from a checkpoint.
+- Decision record: [ADR 0007](docs/decisions/0007-human-confirmation.md); threat model and residual risks:
+  [docs/SECURITY.md](docs/SECURITY.md).
+
+Tested: unit tests cover the webhook filters, the permission check (admin/write allowed; read, none,
+triage, maintain and 404 refused), exactly-once under repeated and concurrent confirms, a push after the
+hold, a failed post followed by a retry, expiry, and the whole chain hold -> `/confirm` -> one review.
+Real-Postgres tests cover the checkpointer. On the sandbox (local worker, real GitHub): a finding was held
+with only the pending comment visible, the owner's `/confirm` posted the review once, a redelivered
+`/confirm` posted nothing, and a push after a hold left the old hold inert. **Not exercised with a real
+second account:** a non-maintainer's `/confirm` (covered by unit tests only).
+
+Known limits: held findings sit in Postgres for up to 72 hours; non-critical findings in the same review
+are delayed too; `/confirm` spam on a PR with a held run costs one permission lookup per comment (no
+per-user rate limit); a maintainer can still confirm without reading.
+
 ## Architecture
 
 ```
@@ -271,6 +309,8 @@ GitHub PR event
      -> review_diff (LangGraph: limits -> optional triage -> security + quality agents per file,
         in parallel) -> validate -> merge, sort, cap
      -> still the PR's head? not posted yet? -> post ONE review (event=COMMENT)
+     (with CONFIRMATION_ENABLED, a critical finding pauses here instead; a maintainer's `/confirm`
+      comment -> permission check -> resume -> post)
 ```
 
 Details and the planned data model are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

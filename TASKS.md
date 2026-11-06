@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 8 (optional); Phase 7 done. Phase 8 code done, sandbox check pending**
+**Current phase: 9; Phase 8 done**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -230,6 +230,11 @@ Learn: LangGraph checkpointers · `interrupt` and resume · authorization checks
       (collaborator permission endpoint). Otherwise ignore. If allowed, resume the graph.
 - [x] 8.5 Decide what happens if nobody confirms (expire, or post after N hours) → ADR.
 **Done when:** `/confirm` from a maintainer posts the findings; from anyone else it does nothing.
+Proven: 367 unit tests (webhook filters, permission matrix, exactly-once, push after hold, failed post then
+retry, expiry, hold -> confirm -> one review) plus real-Postgres checkpointer tests. On the sandbox: a held
+finding showed only the pending comment, the owner's `/confirm` posted the review once, a redelivery posted
+nothing, a push after a hold left the old hold inert. A non-maintainer's `/confirm` was not tried with a real
+second account (unit-tested only). ADR 0007 accepted.
 
 ---
 ## Phase 9 — Ship and present
