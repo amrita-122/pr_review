@@ -4,6 +4,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.diff.parse import ParsedFile, parse_patch
+from app.review.checkpoint import checkpoint_serde
 from app.review.graph import ReviewLimits, resume_review, review_diff
 from app.review.schemas import Category, Finding, Severity
 
@@ -56,13 +57,13 @@ async def run(reviewer: Counting, saver: InMemorySaver | None, **extra: object):
 
 
 async def test_critical_finding_pauses_and_carries_no_findings() -> None:
-    outcome = await run(Counting(Severity.CRITICAL), InMemorySaver())
+    outcome = await run(Counting(Severity.CRITICAL), InMemorySaver(serde=checkpoint_serde()))
     assert outcome.pending == 1
     assert outcome.findings == []  # nothing a caller could post
 
 
 async def test_non_held_severity_finishes_normally() -> None:
-    outcome = await run(Counting(Severity.HIGH), InMemorySaver())
+    outcome = await run(Counting(Severity.HIGH), InMemorySaver(serde=checkpoint_serde()))
     assert outcome.pending == 0
     assert [f.file_path for f in outcome.findings] == ["a.py"]
 
@@ -73,7 +74,7 @@ async def test_without_a_checkpointer_nothing_is_held() -> None:
 
 
 async def test_resume_returns_the_held_findings_without_calling_the_model_again() -> None:
-    saver = InMemorySaver()
+    saver = InMemorySaver(serde=checkpoint_serde())
     await run(Counting(Severity.CRITICAL), saver)
     outcome = await resume_review(THREAD, must_not_be_called, LIMITS, HOLD, saver, approved=True)
     assert outcome.pending == 0
@@ -82,14 +83,14 @@ async def test_resume_returns_the_held_findings_without_calling_the_model_again(
 
 
 async def test_not_approved_yields_no_findings() -> None:
-    saver = InMemorySaver()
+    saver = InMemorySaver(serde=checkpoint_serde())
     await run(Counting(Severity.CRITICAL), saver)
     outcome = await resume_review(THREAD, must_not_be_called, LIMITS, HOLD, saver, approved=False)
     assert outcome.findings == [] and outcome.pending == 0
 
 
 async def test_a_retry_after_the_pause_does_not_review_again() -> None:
-    reviewer, saver = Counting(Severity.CRITICAL), InMemorySaver()
+    reviewer, saver = Counting(Severity.CRITICAL), InMemorySaver(serde=checkpoint_serde())
     first = await run(reviewer, saver)
     again = await run(reviewer, saver)
     assert reviewer.calls == 1  # the paused thread is reused
@@ -97,7 +98,7 @@ async def test_a_retry_after_the_pause_does_not_review_again() -> None:
 
 
 async def test_a_finished_thread_is_cleared_so_findings_are_not_duplicated() -> None:
-    reviewer, saver = Counting(Severity.HIGH), InMemorySaver()
+    reviewer, saver = Counting(Severity.HIGH), InMemorySaver(serde=checkpoint_serde())
     await run(reviewer, saver)
     second = await run(reviewer, saver)
     assert reviewer.calls == 2
@@ -107,7 +108,12 @@ async def test_a_finished_thread_is_cleared_so_findings_are_not_duplicated() -> 
 async def test_resume_without_a_paused_thread_is_an_error() -> None:
     with pytest.raises(ValueError, match="no paused review"):
         await resume_review(
-            THREAD, Counting(Severity.CRITICAL), LIMITS, HOLD, InMemorySaver(), approved=True
+            THREAD,
+            Counting(Severity.CRITICAL),
+            LIMITS,
+            HOLD,
+            InMemorySaver(serde=checkpoint_serde()),
+            approved=True,
         )
 
 
@@ -115,12 +121,12 @@ async def test_a_checkpointer_needs_a_thread_id() -> None:
     with pytest.raises(ValueError, match="thread_id"):
         await review_diff(
             files("a.py"), Counting(Severity.HIGH), LIMITS, hold_severities=HOLD,
-            checkpointer=InMemorySaver(),
+            checkpointer=InMemorySaver(serde=checkpoint_serde()),
         )  # fmt: skip
 
 
 async def test_pre_skipped_files_appear_once_and_survive_a_resume() -> None:
-    reviewer, saver = Counting(Severity.CRITICAL), InMemorySaver()
+    reviewer, saver = Counting(Severity.CRITICAL), InMemorySaver(serde=checkpoint_serde())
     paused = await run(reviewer, saver, pre_skipped=[("uv.lock", "lockfile")])
     resumed = await resume_review(THREAD, reviewer, LIMITS, HOLD, saver, approved=True)
     assert paused.skipped == [("uv.lock", "lockfile")]

@@ -12,10 +12,27 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 import structlog
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from app.config import Settings
 
 logger = structlog.get_logger()
+
+# The only application types that may be read back from a checkpoint (msgpack allow-list).
+# Anything else is BLOCKED, so a tampered checkpoint cannot make us build arbitrary objects.
+# If the graph state gains a new custom type, add it here (a test pauses a real graph).
+CHECKPOINT_TYPES: list[tuple[str, str]] = [
+    ("app.diff.parse", "ParsedFile"),
+    ("app.review.schemas", "Finding"),
+    ("app.review.schemas", "ReviewFinding"),
+    ("app.review.schemas", "Severity"),
+    ("app.review.schemas", "Category"),
+    ("app.review.schemas", "Agent"),
+]
+
+
+def checkpoint_serde() -> JsonPlusSerializer:
+    return JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
 
 
 def checkpoint_conninfo(settings: Settings) -> str:
@@ -29,7 +46,9 @@ def checkpoint_conninfo(settings: Settings) -> str:
 
 @asynccontextmanager
 async def open_checkpointer(settings: Settings) -> AsyncIterator[AsyncPostgresSaver]:
-    async with AsyncPostgresSaver.from_conn_string(checkpoint_conninfo(settings)) as saver:
+    async with AsyncPostgresSaver.from_conn_string(
+        checkpoint_conninfo(settings), serde=checkpoint_serde()
+    ) as saver:
         yield saver
 
 

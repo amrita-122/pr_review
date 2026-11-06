@@ -18,6 +18,7 @@ from app.diff.parse import parse_patch
 from app.jobs import handlers
 from app.jobs.handlers import is_allowed, review_marker, run_confirm_job
 from app.jobs.payload import CONFIRM_REVIEW, ConfirmJobPayload
+from app.review.checkpoint import checkpoint_serde
 from app.review.graph import ReviewLimits, review_diff
 from app.review.schemas import Category, Finding, Severity
 from tests.helpers import FILES, Pipeline
@@ -36,7 +37,7 @@ class Saver:
     """One in-memory checkpointer shared by the review and the confirm job, like Postgres."""
 
     def __init__(self) -> None:
-        self.saver = InMemorySaver()
+        self.saver = InMemorySaver(serde=checkpoint_serde())
 
     @asynccontextmanager
     async def __call__(self, _settings: Any) -> AsyncIterator[InMemorySaver]:
