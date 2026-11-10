@@ -21,13 +21,38 @@ def _finding(path: str = "a.py", line: int = 2) -> Finding:
     )
 
 
-def test_finding_rejects_bad_enum_and_line() -> None:
-    with pytest.raises(ValidationError):
-        ReviewResult.model_validate(
-            {"findings": [{**_finding().model_dump(), "severity": "catastrophic"}]}
-        )
+def test_finding_itself_still_rejects_a_bad_line() -> None:
     with pytest.raises(ValidationError):
         _finding(line=0)
+
+
+def test_one_malformed_finding_does_not_drop_the_files_other_findings() -> None:
+    """10.9: a bad enum, a line of 0 or an empty title costs that finding only."""
+    good = _finding().model_dump()
+    result = ReviewResult.model_validate(
+        {
+            "findings": [
+                {**good, "severity": "catastrophic"},
+                {**good, "line": 0},
+                {**good, "title": ""},
+                "not even an object",
+                {**good, "title": "kept"},
+            ]
+        }
+    )
+    assert [f.title for f in result.findings] == ["kept"]
+
+
+def test_overlong_title_is_shortened_not_fatal() -> None:
+    result = ReviewResult.model_validate(
+        {"findings": [{**_finding().model_dump(), "title": "x" * 500}]}
+    )
+    assert len(result.findings) == 1 and len(result.findings[0].title) == 200
+
+
+def test_a_findings_list_of_the_wrong_shape_is_still_an_error() -> None:
+    with pytest.raises(ValidationError):
+        ReviewResult.model_validate({"findings": "nope"})
 
 
 def test_fake_reviewer_finds_todo_and_password() -> None:
