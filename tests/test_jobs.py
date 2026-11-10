@@ -109,6 +109,25 @@ async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
 
 
 @respx.mock
+async def test_all_files_failing_is_never_reported_as_no_findings(
+    enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """10.2: a review where every file's model call failed must not say 'No findings.'"""
+
+    async def broken(path: str, numbered: str) -> list[Finding]:
+        raise RuntimeError("model down")
+
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: broken)
+    event = make_event()
+    gh = Pipeline(event)
+    enqueue(event)
+    await drain()
+    body = gh.sent_review()["body"]
+    assert "No findings" not in body
+    assert "could NOT be reviewed" in body and "No files were reviewed" in body
+
+
+@respx.mock
 async def test_falls_back_to_summary_when_github_rejects_comments(
     enqueue: Enqueue, drain: Drain
 ) -> None:

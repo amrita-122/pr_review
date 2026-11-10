@@ -28,9 +28,11 @@ def render_summary(
     *,
     overflow: int = 0,
     merged: int = 0,
+    failed: int = 0,
 ) -> str:
     """The review's top-level text. `overflow` = findings cut by the comment cap, `merged` =
-    duplicates folded into another finding; both are stated so the list is never silently short."""
+    duplicates folded into another finding; both are stated so the list is never silently short.
+    `failed` = files whose review step failed: a run with failures is never called clean."""
     lines = [f"Reviewed {reviewed_count} file(s)."]
     if findings:
         severities = Counter(f.severity.value for f in findings)
@@ -41,8 +43,17 @@ def render_summary(
             lines.append(
                 "By category: " + ", ".join(f"{n} {cat}" for cat, n in categories.most_common())
             )
+    elif reviewed_count == 0:
+        lines.append("No files were reviewed, so there is nothing to report.")
+    elif failed:
+        lines.append("No findings in the files that were reviewed.")
     else:
         lines.append("No findings.")
+    if failed:
+        lines.append(
+            f"{failed} file(s) could NOT be reviewed because a review step failed. "
+            "This is not a clean result for those files."
+        )
     if overflow:
         lines.append(
             f"{overflow} lower-priority finding(s) were not posted (comment limit reached)."

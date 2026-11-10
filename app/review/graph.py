@@ -49,6 +49,7 @@ class ReviewOutcome:
     findings: list[Finding]  # validated: safe to post
     reviewed: dict[str, ParsedFile]  # files the model actually reviewed
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
+    failed: list[str] = field(default_factory=list)  # files whose review step failed (unique)
     dropped: list[Dropped] = field(default_factory=list)  # validator drops, with reason
     raw_count: int = 0  # findings the model produced, before validation
     pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post
@@ -244,6 +245,7 @@ def _to_outcome(values: Mapping[str, Any], pending: int) -> ReviewOutcome:
             (path, reason)
             for path, reason in values["pre_skipped"] + values["limit_skipped"] + values["errors"]
         ],
+        failed=sorted(failed),
         dropped=[(item, reason) for item, reason in values["dropped"]],
         raw_count=len(values["findings"]),
         risk=values["risk"],

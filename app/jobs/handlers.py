@@ -304,7 +304,12 @@ def _render(outcome: ReviewOutcome) -> tuple[str, list[ReviewComment]]:
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
     merged = sum(reason == MERGED for _, reason in outcome.dropped)
     summary = render_summary(
-        len(outcome.reviewed), outcome.findings, outcome.skipped, overflow=overflow, merged=merged
+        len(outcome.reviewed),
+        outcome.findings,
+        outcome.skipped,
+        overflow=overflow,
+        merged=merged,
+        failed=len(outcome.failed),
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))

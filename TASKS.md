@@ -259,7 +259,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 - [x] 10.1 Out-of-order webhooks (verified): `supersede_older` (app/db/runs.py) supersedes by "different sha", so a late
       push-1 webhook kills the push-2 run and no review lands on the real head. Only supersede runs that are OLDER.
       Test: deliver push 2 then push 1 -> exactly one review, on the latest sha.
-- [ ] 10.2 False all-clear (verified): render.py prints "No findings." when 0 files were reviewed or files failed.
+- [x] 10.2 False all-clear (verified): render.py prints "No findings." when 0 files were reviewed or files failed.
       Say what was NOT reviewed; a run with failed files is not "clean". Test: all files fail -> never "No findings".
 - [ ] 10.3 PR `closed`/merged (audit): handle the action; expire held runs without commenting on a dead PR, delete their
       checkpoints (they hold source code), and refuse `/confirm` on a closed PR.
