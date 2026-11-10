@@ -278,7 +278,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 - [x] 10.11 GitHub client robustness (audit): invalidate the cached token on 401 in the confirm and expiry paths too;
       honour `Retry-After`; fix the "(more files)" note at exactly 300 files; `review_exists` past 5 pages; cap the webhook body
       size before the HMAC check.
-- [ ] 10.12 Output-policy gaps (audit): bare domains, `mailto:`, `//host`, `#123` and `org/repo#45` cross-references
+- [x] 10.12 Output-policy gaps (audit): bare domains, `mailto:`, `//host`, `#123` and `org/repo#45` cross-references
       (they create backlinks on other issues). Add red-team cases for each and re-run the eval gate.
 - [ ] 10.13 Padding + config hygiene (audit): review files risk-first, not in API order, before the size caps; validate
       `ENABLED_AGENTS`, `CONFIRM_SEVERITIES`, `PROMPT_VERSION` at startup; index `review_runs(status, awaiting_since)`;
