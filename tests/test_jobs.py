@@ -19,7 +19,7 @@ from app.jobs import handlers, worker
 from app.jobs.errors import JobFailure, classify
 from app.jobs.handlers import FAILURE_COMMENT, review_marker
 from app.review.schemas import Finding
-from tests.helpers import Pipeline
+from tests.helpers import FILES, Pipeline
 from tests.test_webhook_signatures import FIXTURE_PATH
 
 Enqueue = Callable[[PullRequestEvent], None]
@@ -109,10 +109,12 @@ async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
 
 
 @respx.mock
-async def test_all_files_failing_is_never_reported_as_no_findings(
-    enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+async def test_all_files_failing_is_retried_and_never_posted_as_a_review(
+    db_session: Session, enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """10.2: a review where every file's model call failed must not say 'No findings.'"""
+    """10.2: when every file's model call fails there is nothing to report. No review is posted
+    (so no false 'No findings'); the job retries, then the PR gets the short failure notice."""
+    settings_env(monkeypatch, job_max_attempts="2")
 
     async def broken(path: str, numbered: str) -> list[Finding]:
         raise RuntimeError("model down")
@@ -122,9 +124,36 @@ async def test_all_files_failing_is_never_reported_as_no_findings(
     gh = Pipeline(event)
     enqueue(event)
     await drain()
+    assert job_of(db_session).status == "queued"
+    make_due(db_session)
+    await drain()
+
+    assert gh.reviews.call_count == 0
+    run = run_of(db_session)
+    assert (run.status, run.failure_reason) == ("failed", "model")
+    assert json.loads(gh.comments.calls[0].request.content)["body"] == FAILURE_COMMENT
+
+
+@respx.mock
+async def test_one_failed_file_still_posts_and_says_it_was_not_reviewed(
+    enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.review.fake import review_file
+
+    async def flaky(path: str, numbered: str) -> list[Finding]:
+        if path != "app/db.py":
+            raise RuntimeError("boom")
+        return review_file(path, numbered)
+
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: flaky)
+    event = make_event()
+    gh = Pipeline(event)
+    other = {"filename": "app/other.py", "status": "modified", "patch": FILES[0]["patch"]}
+    gh.files.mock(return_value=httpx.Response(200, json=[*FILES, other]))
+    enqueue(event)
+    await drain()
     body = gh.sent_review()["body"]
-    assert "No findings" not in body
-    assert "could NOT be reviewed" in body and "No files were reviewed" in body
+    assert "could NOT be reviewed" in body and "No findings." not in body
 
 
 @respx.mock
@@ -315,6 +344,23 @@ async def test_late_webhook_of_an_older_push_does_not_kill_the_newer_run(
         db_session.scalars(select(ReviewRun).where(ReviewRun.head_sha == "a" * 40)).first() is None
     )
     assert len(list(db_session.scalars(select(Job)))) == 1
+
+
+@respx.mock
+async def test_two_pushes_in_the_same_second_supersede_nothing_but_post_only_the_latest(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    """Equal timestamps: order is unknowable, so neither run is killed at enqueue; the stale
+    one is dropped at post time because GitHub's head is the newer commit."""
+    stamp = "2026-11-10T10:00:00Z"
+    first, second = make_event("a" * 40, stamp), make_event("b" * 40, stamp)
+    gh = Pipeline(second)
+    enqueue(second)
+    enqueue(first)  # arrives late, same second
+    await drain()
+    assert gh.reviews.call_count == 1 and gh.sent_review()["commit_id"] == "b" * 40
+    assert run_of(db_session, "b" * 40).status == "ok"
+    assert run_of(db_session, "a" * 40).status == "superseded"
 
 
 @respx.mock

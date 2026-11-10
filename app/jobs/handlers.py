@@ -31,7 +31,7 @@ from app.github.client import (
     post_review,
     review_exists,
 )
-from app.jobs.errors import classify
+from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.checkpoint import delete_thread, open_checkpointer
@@ -251,6 +251,11 @@ async def _run(
             if result == "superseded":
                 await delete_thread(saver, run_id)
             return result
+
+    if outcome.failed and not outcome.reviewed:
+        # Every file we tried to review failed: there is nothing to report. Retry later (and after
+        # the last attempt the PR gets the short failure notice) instead of posting an empty review.
+        raise JobFailure(MODEL, True, "every file failed review")
 
     _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
     summary, comments = _render(outcome)

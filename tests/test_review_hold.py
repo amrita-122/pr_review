@@ -152,7 +152,10 @@ async def test_flag_off_posts_critical_findings_as_before(
 async def test_a_newer_push_removes_the_old_held_checkpoint(
     db_session: Session, held: Saver, enqueue: Enqueue, drain: Drain
 ) -> None:
-    old, new = make_event("a" * 40), make_event("b" * 40)
+    old, new = (
+        make_event("a" * 40, "2026-11-10T10:00:00Z"),
+        make_event("b" * 40, "2026-11-10T10:00:05Z"),
+    )
     gh = Pipeline(old)
     enqueue(old)
     await drain()

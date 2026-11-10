@@ -24,7 +24,7 @@ NOW = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
 
 def held_run(db: Session, sha: str | None = None) -> str:
     """A run that finished reviewing and is waiting for /confirm."""
-    event = make_event(sha)
+    event = make_event(sha, "2026-11-10T10:00:00Z" if sha else None)
     enqueue_review(db, event, get_settings())
     db.commit()
     run = runs.get_by_key(db, f"{event.owner}/{event.repo}", event.number, event.head_sha)
@@ -90,7 +90,7 @@ def test_failed_confirm_returns_run_to_awaiting(db_session: Session) -> None:
 
 def test_newer_push_supersedes_a_held_run(db_session: Session) -> None:
     run_id = held_run(db_session, "a" * 40)
-    enqueue_review(db_session, make_event("b" * 40), get_settings())
+    enqueue_review(db_session, make_event("b" * 40, "2026-11-10T10:00:05Z"), get_settings())
     db_session.commit()
     old = runs.get_run(db_session, run_id)
     assert old is not None

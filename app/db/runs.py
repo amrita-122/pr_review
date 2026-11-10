@@ -74,7 +74,7 @@ def has_newer_run(
     """True if this PR already has a run for ANOTHER commit that GitHub stamped strictly later.
 
     Then the incoming event is a late delivery of an older push and must not replace anything.
-    Equal timestamps (two pushes in the same second) count as "not newer": arrival order decides.
+    Equal timestamps (two pushes in the same second) are not "newer": see supersede_older.
     """
     if updated_at is None:
         return False
@@ -98,8 +98,10 @@ def supersede_older(
 ) -> int:
     """A newer push replaces in-flight runs of OLDER commits of the same PR (no commit).
 
-    A run is older when its timestamp is not later than the incoming one; runs with no
-    timestamp (created before the column existed) are treated as older.
+    A run is older when its timestamp is strictly earlier than the incoming one; runs with no
+    timestamp (created before the column existed) are treated as older. Equal timestamps (two
+    pushes in the same second) supersede nothing: order is unknowable, so both run and the
+    stale one is dropped at post time, when GitHub is asked for the PR's current head.
     """
     conditions = [
         ReviewRun.repo == repo,
@@ -109,7 +111,7 @@ def supersede_older(
     ]
     if updated_at is not None:
         conditions.append(
-            or_(ReviewRun.head_updated_at.is_(None), ReviewRun.head_updated_at <= updated_at)
+            or_(ReviewRun.head_updated_at.is_(None), ReviewRun.head_updated_at < updated_at)
         )
     result = session.execute(
         update(ReviewRun)
