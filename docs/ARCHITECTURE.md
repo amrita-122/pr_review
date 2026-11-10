@@ -73,3 +73,18 @@ GitHub PR event
   Cost is computed at the edge (job handler, eval runner), so `review_diff` stays pure.
 - Evals: `evals/run.py` -> `build_default_reviewer` -> `review_diff` on each golden case -> match against
   `expected.jsonl` -> metrics -> `evals/results/<date>_<prompt_version>.json`. CI runs it with `--check`.
+
+## Phase 10 plan (hardening + product improvements; see TASKS.md, ADR 0008, ADR 0009)
+Not built yet; this section is the target design and is updated as each branch lands.
+- Delivery by visibility (ADR 0008): the job payload and run record carry `repository.private`.
+    private repo -> inline review as today
+    public repo  -> high/critical SECURITY findings -> private draft security advisory (maintainers only);
+                    the PR gets one neutral "review complete" line; medium/low and non-security stay inline
+- Self-correction: `findings` gains review id, comment id and node id. A new push does not repeat a still-present
+  posted finding; a finding that no longer reproduces gets "Fixed in <sha>" and its thread is resolved (GraphQL).
+  `/dismiss` marks a finding `false_positive`.
+- PR `closed` and draft / `ready_for_review` are handled; a late webhook never supersedes a newer run.
+- Architecture agent (ADR 0009, off by default): the job handler fetches a capped set of related repo files via the
+  Contents API and passes them to `review_diff` as data; findings have no line and go to the summary or the
+  private channel.
+- Trust boundary addition: repo files read for context are untrusted, like the diff.

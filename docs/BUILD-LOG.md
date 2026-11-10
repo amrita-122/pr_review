@@ -312,3 +312,13 @@ second account:** a non-maintainer's `/confirm` (covered by unit tests only).
 Known limits: held findings sit in Postgres for up to 72 hours; non-critical findings in the same review
 are delayed too; `/confirm` spam on a PR with a held run costs one permission lookup per comment (no
 per-user rate limit); a maintainer can still confirm without reading.
+
+## Phase 10 — Hardening and product improvements (planned 2026-11-10)
+
+An audit of the finished Phases 0-9 (two read-only passes over the code) produced the Phase 10 plan in TASKS.md.
+Two bugs were confirmed by reading the code: `supersede_older` can supersede the newest run when webhooks arrive out
+of order, and `render.py` prints "No findings." even when no file was reviewed. The owner also pointed out that
+findings are posted publicly, even after `/confirm`, and that old comments are never corrected. Decisions:
+ADR 0008 (private delivery for public repos: draft security advisory + neutral PR note), ADR 0009 (architecture
+agent), hold only critical findings, skip drafts, the PR author cannot confirm their own review. Four branches:
+`fix/reliability`, `feat/self-correction`, `feat/private-delivery`, `feat/architecture-agent`. Nothing is built yet.

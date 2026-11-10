@@ -192,3 +192,17 @@ comment on a PR in an installed repo (on a public repo: any GitHub account) can 
 13. **A maintainer can confirm without reading.** The gate adds a human, not a guarantee of review.
 14. **The "N findings pending" comment reveals that critical findings exist** on a public PR (not what they are).
 15. **Non-critical findings are delayed too**, because the whole review is held (ADR 0007).
+
+## Public disclosure of findings (Phase 10 plan, ADR 0008)
+- Risk: on a public repo every bot output (inline comment, summary, Check Run, even "N critical pending") is public,
+  so the bot can announce a vulnerability before it is fixed and make it easier to exploit. ADR 0007's `/confirm`
+  controls when it is posted, not who can see it.
+- Planned mitigation: read `repository.private`; on public repos high/critical security findings go to a private draft
+  security advisory and the PR gets a neutral line only. Not built yet. Until 10.20 is done, do not install the App
+  on public repos with real code.
+- New residual risks to record when built: the neutral note still signals that a review finished; advisories can be
+  disabled per repo; the extra `repository_advisories: write` permission widens the App's reach.
+- Architecture agent (ADR 0009): repo files are untrusted input in a second place (not only the diff). It needs the
+  same delimiters and output policy and its own red-team cases before it is enabled.
+- Audit items that touch security (TASKS 10.1-10.13): padding can push a vulnerable file past the size cap;
+  output-policy gaps (bare domains, `mailto:`, `#123` cross-references); a false "No findings." when files failed.

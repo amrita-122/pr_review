@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 9; 9.1 done**
+**Current phase: 10 (hardening + product improvements; started 2026-11-10); 9.2-9.4 still open**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -243,3 +243,95 @@ second account (unit-tested only). ADR 0007 accepted.
 - [ ] 9.2 2–3 minute demo video.
 - [ ] 9.3 Write-up (blog / LinkedIn): how you measured the reviewer and the injection results.
 - [ ] 9.4 Resume bullets — real numbers only.
+
+---
+## Phase 10 — Hardening and product improvements
+Goal: no lost or false reviews, no vulnerability details on public pages, findings that correct themselves,
+and a reviewer that also looks at architecture. Source: a code audit on 2026-11-10 (items marked "audit" were
+reported by the audit and must be re-checked in the code when you start them; "verified" = read in the code).
+Decisions: ADR 0008 (private delivery) and ADR 0009 (architecture agent). **Claude writes the code for this
+phase** (Amrita said "write it" on 2026-11-10); she reviews each branch. Four branches, each merged through a PR
+with green CI; do them in order. Each step: unit tests first (fake models + respx), then the fix.
+Learn: webhook ordering and idempotency · GitHub GraphQL (resolve review threads) · GitHub Security Advisories ·
+repository visibility · LLM retrieval of repo context · responsible disclosure
+
+### Branch 1 — `fix/reliability`
+- [ ] 10.1 Out-of-order webhooks (verified): `supersede_older` (app/db/runs.py) supersedes by "different sha", so a late
+      push-1 webhook kills the push-2 run and no review lands on the real head. Only supersede runs that are OLDER.
+      Test: deliver push 2 then push 1 -> exactly one review, on the latest sha.
+- [ ] 10.2 False all-clear (verified): render.py prints "No findings." when 0 files were reviewed or files failed.
+      Say what was NOT reviewed; a run with failed files is not "clean". Test: all files fail -> never "No findings".
+- [ ] 10.3 PR `closed`/merged (audit): handle the action; expire held runs without commenting on a dead PR, delete their
+      checkpoints (they hold source code), and refuse `/confirm` on a closed PR.
+- [ ] 10.4 Drafts (audit): skip draft PRs; handle `ready_for_review` (add to the handled actions); setting to turn it off.
+- [ ] 10.5 422 fallback (audit): when inline comments are dropped, say so in the summary (no "See the inline comments")
+      and re-check `review_exists` before the retry.
+- [ ] 10.6 Concurrent duplicate delivery (audit): catch `IntegrityError` on the (repo, pr, sha) unique key; no 500.
+- [ ] 10.7 Pending-comment loss (audit): the "held" flag is set before the POST; a failed POST means nobody is told.
+      Set it only after the comment is posted (or reset it on failure).
+- [ ] 10.8 Hold only critical findings (audit; amends ADR 0007): non-critical findings are not withheld. Exact posting
+      shape is set in ADR 0008. Update ADR 0007's status line when done.
+- [ ] 10.9 One bad field must not drop a file's findings (audit): schemas.py `title max_length` / `line ge=1` fail the whole
+      `ReviewResult`. Parse per finding (or loosen the schema; policy.py already trims).
+- [ ] 10.10 `/confirm` hardening (audit): the PR author cannot confirm their own review; unprivileged users get one short
+      reply (not silence); cap permission lookups per PR so comment spam costs ~nothing.
+- [ ] 10.11 GitHub client robustness (audit): invalidate the cached token on 401 in the confirm and expiry paths too;
+      honour `Retry-After`; fix the "(more files)" note at exactly 300 files; `review_exists` past 5 pages; cap the webhook body
+      size before the HMAC check.
+- [ ] 10.12 Output-policy gaps (audit): bare domains, `mailto:`, `//host`, `#123` and `org/repo#45` cross-references
+      (they create backlinks on other issues). Add red-team cases for each and re-run the eval gate.
+- [ ] 10.13 Padding + config hygiene (audit): review files risk-first, not in API order, before the size caps; validate
+      `ENABLED_AGENTS`, `CONFIRM_SEVERITIES`, `PROMPT_VERSION` at startup; index `review_runs(status, awaiting_since)`;
+      prune old `webhook_deliveries` and finished `jobs`; dedupe the `skipped` list.
+**Done when:** each item above has a failing-then-passing test, CI is green, and the two verified bugs are reproduced
+on the sandbox repo (late webhook, all files failing) and fixed.
+
+### Branch 2 — `feat/self-correction`
+- [ ] 10.14 Store GitHub ids: migration adding review id, comment id and node id to `findings`; save them when posting.
+      No comment can be updated, resolved or deduped today (audit).
+- [ ] 10.15 Don't repeat yourself: on a new push, don't post a finding that is already posted (same file, category, nearby
+      line, still present); only new findings are commented.
+- [ ] 10.16 Fix what is fixed: for a previously posted finding that no longer reproduces, reply "Fixed in <sha>" and resolve
+      the thread (GraphQL `resolveReviewThread`). Never delete comments.
+- [ ] 10.17 Feedback: `/dismiss` (same permission rules as `/confirm`) marks a finding `false_positive`; a held review can
+      be dismissed instead of only expiring; the dismissal rate shows up in the run record.
+**Done when:** push a fix to a sandbox PR -> the old comment is answered and resolved and nothing is duplicated.
+
+### Branch 3 — `feat/private-delivery`
+- [ ] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
+      permission (`repository_advisories: write`), that a draft is invisible to non-maintainers, and what happens on
+      repos with advisories disabled. If it does not work, switch the ADR's channel to email and say why.
+- [ ] 10.19 Read `repository.private` from the webhook into the job payload / run record.
+- [ ] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
+      "review complete" line at the end (no category, severity, file or line). Medium, low and non-security findings stay
+      inline. Private repos behave as before. Applies to the `/confirm` pending comment too (it must not say "critical").
+- [ ] 10.21 Tests for both modes; red-team case: a finding's title or rationale must never appear in public PR text on a
+      public repo. Sandbox check with a public repo and a private one.
+**Done when:** on a public sandbox repo a planted SQL injection produces a draft advisory and a neutral PR note, and
+nothing in the PR, its checks or its comments names the vulnerability.
+
+### Branch 4 — `feat/architecture-agent`
+- [ ] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
+- [ ] 10.23 Context retrieval at the edge (not in `review_diff`): fetch related files through the Contents API (read-only;
+      permission already held), under hard caps; `review_diff` receives them as data, so it stays pure.
+- [ ] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
+      validation layers. Repo files get the same randomized delimiters and output policy as the diff. Findings have no line:
+      they go to the summary (private repo) or the private channel (public repo, high/critical).
+- [ ] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
+      measure precision/recall and cost; record results in README and SECURITY.md.
+- [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
+**Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
+numbers justify turning it on.
+
+### Optional ideas (do after the four branches, one at a time; each needs a plan and your "go")
+- [ ] 10.27 Suggested-change blocks (render `Finding.suggestion` as a ```suggestion block).
+- [ ] 10.28 Check Run with annotations and a neutral status (public repos: no vulnerability text, see ADR 0008).
+- [ ] 10.29 Per-repo `.review-bot.yml`, read from the BASE branch only (a PR can change its own copy).
+- [ ] 10.30 `/review` and `/explain` commands.
+- [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
+- [ ] 10.32 Secret-scanning pre-pass (regex + entropy) before the LLM; dependency/lockfile advisory check.
+- [ ] 10.33 Multi-line ranges and LEFT-side comments (deleted auth checks can't be flagged today).
+- [ ] 10.34 Per-PR and per-day cost budget; per-author rate limit; failure alerting; dashboard over runs/findings.
+- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents.
+**Phase 10 done when:** branches 1-4 are merged, the README has the Phase 10 section with numbers, and docs/SECURITY.md
+lists the new residual risks.
