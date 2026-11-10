@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import re
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -32,6 +33,8 @@ class Head(BaseModel):
 
 class PullRequest(BaseModel):
     head: Head
+    # When GitHub last changed this PR. Used only to order out-of-order deliveries of pushes.
+    updated_at: datetime | None = None
 
 
 class PullRequestEvent(BaseModel):
@@ -58,6 +61,10 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def head_updated_at(self) -> datetime | None:
+        return self.pull_request.updated_at
 
 
 class CommentUser(BaseModel):

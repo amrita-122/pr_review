@@ -132,7 +132,10 @@ def test_pull_request_event_does_not_parse_pr_text() -> None:
     from app.github.webhooks import PullRequest
 
     assert not {"title", "body"} & set(PullRequestEvent.model_fields)
-    assert set(PullRequest.model_fields) == {"head"}
+    assert set(PullRequest.model_fields) == {
+        "head",
+        "updated_at",
+    }  # updated_at: a timestamp, not text
 
 
 def test_github_client_cannot_approve_merge_or_request_changes() -> None:

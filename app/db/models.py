@@ -56,6 +56,8 @@ class ReviewRun(Base):
     # queued | running | ok | failed | superseded (a newer push replaced it; it must not post)
     # | awaiting_confirmation | confirming | expired (Phase 8)
     status: Mapped[str] = mapped_column(String)
+    # The webhook's pull_request.updated_at for this head: orders pushes that arrive out of order.
+    head_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String)
     model: Mapped[str] = mapped_column(String)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

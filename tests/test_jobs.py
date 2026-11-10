@@ -27,10 +27,12 @@ Drain = Callable[[], Awaitable[None]]
 RAW = json.loads(FIXTURE_PATH.read_bytes())
 
 
-def make_event(sha: str | None = None) -> PullRequestEvent:
+def make_event(sha: str | None = None, updated_at: str | None = None) -> PullRequestEvent:
     raw = copy.deepcopy(RAW)
     if sha is not None:
         raw["pull_request"]["head"]["sha"] = sha
+    if updated_at is not None:
+        raw["pull_request"]["updated_at"] = updated_at
     return PullRequestEvent.model_validate(raw)
 
 
@@ -272,6 +274,43 @@ async def test_newer_push_supersedes_the_older_run(
     assert run_of(db_session, "a" * 40).status == "superseded"
     assert run_of(db_session, "b" * 40).status == "ok"
     assert [j.status for j in db_session.scalars(select(Job).order_by(Job.id))] == ["done", "done"]
+
+
+@respx.mock
+async def test_late_webhook_of_an_older_push_does_not_kill_the_newer_run(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    """10.1: push 2's webhook arrives first, push 1's arrives late."""
+    first = make_event("a" * 40, updated_at="2026-11-10T10:00:00Z")
+    second = make_event("b" * 40, updated_at="2026-11-10T10:00:05Z")
+    gh = Pipeline(second)  # GitHub's current head is push 2
+    enqueue(second)
+    enqueue(first)
+    await drain()
+
+    assert gh.reviews.call_count == 1
+    assert gh.sent_review()["commit_id"] == "b" * 40
+    assert run_of(db_session, "b" * 40).status == "ok"
+    db_session.expire_all()
+    assert (
+        db_session.scalars(select(ReviewRun).where(ReviewRun.head_sha == "a" * 40)).first() is None
+    )
+    assert len(list(db_session.scalars(select(Job)))) == 1
+
+
+@respx.mock
+async def test_in_order_pushes_still_supersede_by_timestamp(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    first = make_event("a" * 40, updated_at="2026-11-10T10:00:00Z")
+    second = make_event("b" * 40, updated_at="2026-11-10T10:00:05Z")
+    gh = Pipeline(second)
+    enqueue(first)
+    enqueue(second)
+    await drain()
+    assert gh.reviews.call_count == 1
+    assert run_of(db_session, "a" * 40).status == "superseded"
+    assert run_of(db_session, "b" * 40).status == "ok"
 
 
 @respx.mock

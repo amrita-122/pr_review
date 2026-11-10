@@ -8,7 +8,7 @@ Callers decide which writes are critical (let them raise) and which are bookkeep
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import FindingRow, ReviewRun
@@ -51,6 +51,7 @@ def create_queued(
     head_sha: str,
     prompt_version: str,
     model: str,
+    head_updated_at: datetime | None = None,
 ) -> None:
     """Add (not commit) a queued run: the caller commits it together with the job."""
     session.add(
@@ -59,6 +60,7 @@ def create_queued(
             repo=repo,
             pr_number=pr_number,
             head_sha=head_sha,
+            head_updated_at=head_updated_at,
             status=QUEUED,
             prompt_version=prompt_version,
             model=model,
@@ -66,16 +68,52 @@ def create_queued(
     )
 
 
-def supersede_older(session: Session, repo: str, pr_number: int, keep_sha: str) -> int:
-    """A newer push replaces every in-flight run for other commits of the same PR (no commit)."""
+def has_newer_run(
+    session: Session, repo: str, pr_number: int, head_sha: str, updated_at: datetime | None
+) -> bool:
+    """True if this PR already has a run for ANOTHER commit that GitHub stamped strictly later.
+
+    Then the incoming event is a late delivery of an older push and must not replace anything.
+    Equal timestamps (two pushes in the same second) count as "not newer": arrival order decides.
+    """
+    if updated_at is None:
+        return False
+    return (
+        session.scalars(
+            select(ReviewRun.id)
+            .where(
+                ReviewRun.repo == repo,
+                ReviewRun.pr_number == pr_number,
+                ReviewRun.head_sha != head_sha,
+                ReviewRun.head_updated_at > updated_at,
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
+def supersede_older(
+    session: Session, repo: str, pr_number: int, keep_sha: str, updated_at: datetime | None = None
+) -> int:
+    """A newer push replaces in-flight runs of OLDER commits of the same PR (no commit).
+
+    A run is older when its timestamp is not later than the incoming one; runs with no
+    timestamp (created before the column existed) are treated as older.
+    """
+    conditions = [
+        ReviewRun.repo == repo,
+        ReviewRun.pr_number == pr_number,
+        ReviewRun.head_sha != keep_sha,
+        ReviewRun.status.in_(IN_FLIGHT),
+    ]
+    if updated_at is not None:
+        conditions.append(
+            or_(ReviewRun.head_updated_at.is_(None), ReviewRun.head_updated_at <= updated_at)
+        )
     result = session.execute(
         update(ReviewRun)
-        .where(
-            ReviewRun.repo == repo,
-            ReviewRun.pr_number == pr_number,
-            ReviewRun.head_sha != keep_sha,
-            ReviewRun.status.in_(IN_FLIGHT),
-        )
+        .where(*conditions)
         .values(status=SUPERSEDED, finished_at=datetime.now(UTC))
     )
     return int(result.rowcount)  # type: ignore[attr-defined]
