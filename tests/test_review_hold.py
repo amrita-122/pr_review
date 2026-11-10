@@ -280,3 +280,7 @@ async def test_only_the_critical_finding_is_held_the_rest_of_the_review_posts_no
     final = run_of(db_session)
     assert final.status == runs.OK and final.held_posted_at is not None
     assert not thread_exists(held, run.id)
+    # the confirmed finding was added; the first review's finding was NOT wiped (10.14)
+    db_session.expire_all()
+    saved = sorted((r.file, r.severity, r.posted) for r in db_session.scalars(select(FindingRow)))
+    assert saved == [("app/db.py", "critical", True), ("app/other.py", "medium", True)]

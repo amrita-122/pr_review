@@ -108,6 +108,10 @@ class FindingRow(Base):
     title: Mapped[str] = mapped_column(String)
     posted: Mapped[bool] = mapped_column(Boolean)
     drop_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Where GitHub put it (10.14): needed to reply to it, resolve its thread, or recognise it later.
+    github_review_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    github_comment_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    github_node_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class ConfirmDenial(Base):

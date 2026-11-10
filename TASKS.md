@@ -287,7 +287,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 on the sandbox repo (late webhook, all files failing) and fixed.
 
 ### Branch 2 — `feat/self-correction`
-- [ ] 10.14 Store GitHub ids: migration adding review id, comment id and node id to `findings`; save them when posting.
+- [x] 10.14 Store GitHub ids: migration adding review id, comment id and node id to `findings`; save them when posting.
       No comment can be updated, resolved or deduped today (audit).
 - [ ] 10.15 Don't repeat yourself: on a new push, don't post a finding that is already posted (same file, category, nearby
       line, still present); only new findings are commented.

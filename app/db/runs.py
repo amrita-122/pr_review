@@ -221,8 +221,16 @@ def save_findings(
     run_id: str,
     posted: list[Finding],
     dropped: list[tuple[Finding, str]],
+    *,
+    replace_severities: frozenset[str] | None = None,
 ) -> None:
-    session.execute(delete(FindingRow).where(FindingRow.run_id == run_id))  # a retry replaces
+    """Record a run's findings; a retry replaces them. `replace_severities` limits what is
+    replaced: the follow-up review after /confirm saves only the held severities and must keep
+    the rows (and GitHub ids) of the findings that were posted in the first review."""
+    stale = delete(FindingRow).where(FindingRow.run_id == run_id)
+    if replace_severities is not None:
+        stale = stale.where(FindingRow.severity.in_(replace_severities))
+    session.execute(stale)
     rows = [(f, True, None) for f in posted] + [(f, False, reason) for f, reason in dropped]
     session.add_all(
         FindingRow(
@@ -460,3 +468,36 @@ def record_denial(session: Session, run_id: str, login: str) -> bool:
         session.rollback()
         return False
     return True
+
+
+def save_github_ids(
+    session: Session,
+    run_id: str,
+    *,
+    review_id: int | None,
+    comments: list[tuple[str, int, int, str | None]],
+) -> None:
+    """Attach GitHub's ids to the posted findings of a run. `comments` = (path, line, comment_id,
+    node_id). A finding is matched by file and line; rows that already have an id are left alone.
+    Returns how many findings got a comment id."""
+    rows = list(
+        session.scalars(
+            select(FindingRow).where(
+                FindingRow.run_id == run_id,
+                FindingRow.posted.is_(True),
+                FindingRow.github_comment_id.is_(None),
+            )
+        ).all()
+    )
+    for path, line, comment_id, node_id in comments:
+        row = next((r for r in rows if r.file == path and r.line == line), None)
+        if row is None:
+            continue
+        rows.remove(row)
+        row.github_comment_id = comment_id
+        row.github_node_id = node_id
+        row.github_review_id = review_id
+    if review_id is not None:
+        for row in rows:  # posted in this review but not matched to a comment (summary fallback)
+            row.github_review_id = row.github_review_id or review_id
+    session.commit()

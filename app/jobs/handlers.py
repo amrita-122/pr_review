@@ -377,7 +377,7 @@ async def _post_once(
     body = f"{summary}\n\n{marker}"
     args = (token, payload.owner, payload.repo, payload.number, payload.head_sha)
     try:
-        await post_review(*args, body, comments)
+        posted = await post_review(*args, body, comments)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 422 or not comments:
             raise
@@ -387,8 +387,21 @@ async def _post_once(
             _critical(lambda s: runs.mark_posted(s, run_id, held=held))
             return "already_posted"
         fallback = render_fallback_summary(summary, [(c.path, c.line, c.body) for c in comments])
-        await post_review(*args, f"{fallback}\n\n{marker}", [])
+        posted = await post_review(*args, f"{fallback}\n\n{marker}", [])
     _critical(lambda s: runs.mark_posted(s, run_id, held=held))
+    _record(
+        "github_ids",
+        lambda s: runs.save_github_ids(
+            s,
+            run_id,
+            review_id=posted.id,
+            comments=[
+                (c.path, c.placed_line, c.id, c.node_id)
+                for c in posted.comments
+                if c.placed_line is not None
+            ],
+        ),
+    )
     return "posted"
 
 
@@ -508,8 +521,18 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         )
 
         # The held findings are only now final: record them (posted or not is set when posted).
+        # After a first review (10.8) only the held severities are replaced: the others keep
+        # their rows and GitHub ids.
+        held_names = frozenset(s.value for s in settings.held_severities)
         _record(
-            "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
+            "findings",
+            lambda s: runs.save_findings(
+                s,
+                run_id,
+                [f for f in outcome.findings if not follow_up or f.severity.value in held_names],
+                [] if follow_up else outcome.dropped,
+                replace_severities=held_names if follow_up else None,
+            ),
         )
 
         # 5. Render, 6. post once (re-checks head SHA and the marker). When the rest of the review
