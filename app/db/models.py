@@ -112,6 +112,8 @@ class FindingRow(Base):
     github_review_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     github_comment_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     github_node_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Set when a later push no longer reproduces this finding (10.16): the commit that fixed it.
+    fixed_in_sha: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class ConfirmDenial(Base):

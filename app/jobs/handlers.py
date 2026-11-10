@@ -28,6 +28,8 @@ from app.github.client import (
     list_pr_files,
     post_pr_comment,
     post_review,
+    reply_to_review_comment,
+    resolve_review_thread,
     review_exists,
 )
 from app.jobs.errors import MODEL, JobFailure, classify
@@ -35,7 +37,7 @@ from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
-from app.review.dedupe import ALREADY_POSTED, KnownFinding
+from app.review.dedupe import ALREADY_POSTED, KnownFinding, is_repeat_of
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
 from app.review.render import (
@@ -349,7 +351,62 @@ async def _run(
     result = await _post_once(payload, token, summary, comments)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
+    if result == "posted":
+        await _close_fixed_findings(payload, token, outcome)
     return result
+
+
+FIXED_REPLY = "Fixed in `{sha}`. This thread is resolved; reopen it if the problem is still there."
+
+
+async def _close_fixed_findings(
+    payload: ReviewJobPayload, token: str, outcome: ReviewOutcome
+) -> None:
+    """Answer and resolve the threads of earlier findings this push no longer reproduces (10.16).
+
+    Conservative on purpose: a model that stays silent is weak evidence, so nothing is closed
+    unless this review was complete (no failed files) and covered the finding's file. Comments
+    are never deleted or edited. Best effort: a failure here never fails the review job.
+    """
+    if outcome.failed:
+        return
+    run_id = payload.run_id
+    try:
+        prior = _critical(
+            lambda s: runs.list_open_findings(s, payload.repo_full_name, payload.number, run_id)
+        )
+        present = [
+            *outcome.findings,
+            *outcome.held,
+            *(finding for finding, _ in outcome.dropped),
+        ]
+        sha = payload.head_sha
+        for finding_id, file, category, line, comment_id in prior:
+            if file not in outcome.reviewed:
+                continue  # skipped, over a limit, or not in this push: no evidence either way
+            if is_repeat_of(KnownFinding(file=file, category=category, line=line), present):
+                continue
+            if not _critical(lambda s, fid=finding_id: runs.claim_fixed(s, fid, sha[:12])):  # type: ignore[misc]
+                continue
+            if comment_id is None:
+                continue  # we never learned GitHub's id: recorded as fixed, nothing to answer
+            try:
+                await reply_to_review_comment(
+                    token,
+                    payload.owner,
+                    payload.repo,
+                    payload.number,
+                    comment_id,
+                    FIXED_REPLY.format(sha=sha[:7]),
+                )
+                await resolve_review_thread(
+                    token, payload.owner, payload.repo, payload.number, comment_id
+                )
+            except Exception as exc:
+                logger.warning("fixed_reply_failed", error=type(exc).__name__)
+                _critical(lambda s, fid=finding_id: runs.release_fixed(s, fid))  # type: ignore[misc]
+    except Exception as exc:  # the review itself is already posted
+        logger.warning("close_fixed_findings_failed", error=type(exc).__name__)
 
 
 async def _post_once(

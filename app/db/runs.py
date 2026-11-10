@@ -484,9 +484,53 @@ def list_known_findings(
             ReviewRun.id != exclude_run_id,
             ReviewRun.posted_at.is_not(None),  # a review that really went out
             FindingRow.posted.is_(True),
+            FindingRow.fixed_in_sha.is_(None),  # a fixed one that comes back is a NEW finding
         )
     ).all()
     return [(r.file, r.category, r.line) for r in rows]
+
+
+def list_open_findings(
+    session: Session, repo: str, pr_number: int, exclude_run_id: str
+) -> list[tuple[int, str, str, int, int | None]]:
+    """Findings visible on this PR from other runs and not yet fixed:
+    (row id, file, category, line, GitHub comment id or None)."""
+    rows = session.execute(
+        select(
+            FindingRow.id,
+            FindingRow.file,
+            FindingRow.category,
+            FindingRow.line,
+            FindingRow.github_comment_id,
+        )
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != exclude_run_id,
+            ReviewRun.posted_at.is_not(None),
+            FindingRow.posted.is_(True),
+            FindingRow.fixed_in_sha.is_(None),
+        )
+    ).all()
+    return [(r.id, r.file, r.category, r.line, r.github_comment_id) for r in rows]
+
+
+def claim_fixed(session: Session, finding_id: int, sha: str) -> bool:
+    """Mark a finding fixed, atomically. True for exactly ONE caller: the right to reply."""
+    result = session.execute(
+        update(FindingRow)
+        .where(FindingRow.id == finding_id, FindingRow.fixed_in_sha.is_(None))
+        .values(fixed_in_sha=sha)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def release_fixed(session: Session, finding_id: int) -> None:
+    """The reply failed: forget the claim so a later push tries again."""
+    session.execute(update(FindingRow).where(FindingRow.id == finding_id).values(fixed_in_sha=None))
+    session.commit()
 
 
 def save_github_ids(

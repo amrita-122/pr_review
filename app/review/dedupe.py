@@ -31,6 +31,16 @@ def is_repeat(finding: Finding, known: Iterable[KnownFinding]) -> bool:
     )
 
 
+def is_repeat_of(known: KnownFinding, findings: Iterable[Finding]) -> bool:
+    """Does any of these findings describe the same problem as the earlier one?"""
+    return any(
+        known.file == f.file_path
+        and known.category == f.category.value
+        and abs(known.line - f.line) <= LINE_TOLERANCE
+        for f in findings
+    )
+
+
 def drop_repeats(
     findings: list[Finding], known: Iterable[KnownFinding]
 ) -> tuple[list[Finding], list[Dropped]]:

@@ -1,4 +1,5 @@
 import re
+from typing import Any
 
 import httpx
 import structlog
@@ -164,6 +165,79 @@ async def _list_review_comments(
             headers=_headers(token),
         )
     return [PostedComment.model_validate(item) for item in response.json()]
+
+
+async def reply_to_review_comment(
+    token: str, owner: str, repo: str, number: int, comment_id: int, body: str
+) -> None:
+    """Answer one of our own inline comments (a reply in its thread). Never edits or deletes."""
+    async with github_client() as client:
+        response = await client.post(
+            f"/repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/replies",
+            json={"body": body},
+            headers=_headers(token),
+        )
+    response.raise_for_status()
+
+
+_THREADS_QUERY = """
+query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { id isResolved comments(first: 1) { nodes { databaseId } } }
+      }
+    }
+  }
+}
+"""
+_RESOLVE_MUTATION = """
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } }
+}
+"""
+MAX_THREAD_PAGES = 5
+
+
+async def _graphql(
+    client: httpx.AsyncClient, token: str, query: str, **variables: object
+) -> dict[str, Any]:
+    response = await client.post(
+        "/graphql", json={"query": query, "variables": variables}, headers=_headers(token)
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("errors"):
+        # GraphQL reports failures with HTTP 200. The messages can echo input: type only.
+        raise RuntimeError("GitHub GraphQL returned errors")
+    return data["data"]  # type: ignore[no-any-return]
+
+
+async def resolve_review_thread(
+    token: str, owner: str, repo: str, number: int, comment_id: int
+) -> bool:
+    """Mark the review thread that starts with this comment as resolved (the comment stays).
+
+    Returns False when no such thread is found. A thread that is already resolved is fine.
+    """
+    async with github_client(REVIEW_TIMEOUT) as client:
+        after: str | None = None
+        for _ in range(MAX_THREAD_PAGES):
+            data = await _graphql(
+                client, token, _THREADS_QUERY, owner=owner, repo=repo, number=number, after=after
+            )
+            threads = data["repository"]["pullRequest"]["reviewThreads"]
+            for node in threads["nodes"]:
+                first = node["comments"]["nodes"]
+                if first and first[0]["databaseId"] == comment_id:
+                    if not node["isResolved"]:
+                        await _graphql(client, token, _RESOLVE_MUTATION, threadId=node["id"])
+                    return True
+            if not threads["pageInfo"]["hasNextPage"]:
+                return False
+            after = threads["pageInfo"]["endCursor"]
+    return False
 
 
 async def get_pr_head_sha(token: str, owner: str, repo: str, number: int) -> str:

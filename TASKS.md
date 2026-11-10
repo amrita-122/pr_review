@@ -291,7 +291,7 @@ on the sandbox repo (late webhook, all files failing) and fixed.
       No comment can be updated, resolved or deduped today (audit).
 - [x] 10.15 Don't repeat yourself: on a new push, don't post a finding that is already posted (same file, category, nearby
       line, still present); only new findings are commented.
-- [ ] 10.16 Fix what is fixed: for a previously posted finding that no longer reproduces, reply "Fixed in <sha>" and resolve
+- [x] 10.16 Fix what is fixed: for a previously posted finding that no longer reproduces, reply "Fixed in <sha>" and resolve
       the thread (GraphQL `resolveReviewThread`). Never delete comments.
 - [ ] 10.17 Feedback: `/dismiss` (same permission rules as `/confirm`) marks a finding `false_positive`; a held review can
       be dismissed instead of only expiring; the dismissal rate shows up in the run record.
