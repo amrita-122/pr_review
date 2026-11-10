@@ -152,7 +152,7 @@ findings are not repeated on later pushes, and "Fixed in <sha>" replies resolve 
 false positives; on public repos high/critical security findings never appear on the PR (they go to a private
 channel, fail closed); an optional architecture agent reads related repo files.
 
-Numbers: the Phase 10 changes add 330+ unit tests (no real model calls). **No new eval numbers yet**: the
+Numbers: the Phase 10 changes add about 200 unit tests (370 -> 570) (no real model calls). **No new eval numbers yet**: the
 architecture agent's golden/red-team measurement and the public-repo sandbox check are still to do (see TASKS.md
 10.18, 10.21, 10.25).
 

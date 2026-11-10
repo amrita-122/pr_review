@@ -236,7 +236,8 @@ What is still open, in rough order of importance:
 7. **Contents API reads are bounded, not private.** Up to 8 files / 40,000 characters of repository text are
    sent to the model provider per PR when the agent is on (same trust as the diff, but more of the repo).
 8. **Retention.** `webhook_deliveries` (30 days) and finished `jobs` (14 days) are pruned; `findings` and
-   `review_runs` are kept (they hold titles and file paths, never code or rationale text of dropped findings is
-   logged). A deleted delivery id could be processed again if GitHub redelivered it after 30 days.
+   `review_runs` are kept (titles, file names and line numbers, including findings that were never posted). Logs
+   carry reasons and counts, never finding text. A deleted delivery id could be processed again if GitHub
+   redelivered it after 30 days.
 9. **Unproven on Postgres in CI.** The 8 skipped tests are the real-Postgres ones; the Phase 10 migrations
    (`d94f...` to `a9e3...`) were only exercised through SQLite models. Run `alembic upgrade head` on a copy first.
