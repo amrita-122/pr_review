@@ -206,3 +206,37 @@ comment on a PR in an installed repo (on a public repo: any GitHub account) can 
   same delimiters and output policy and its own red-team cases before it is enabled.
 - Audit items that touch security (TASKS 10.1-10.13): padding can push a vulnerable file past the size cap;
   output-policy gaps (bare domains, `mailto:`, `#123` cross-references); a false "No findings." when files failed.
+
+
+## Phase 10 residual risks (hardening, self-correction, private delivery, architecture agent)
+
+What Phase 10 closed: late webhooks no longer kill the newest run; a review where files failed is never called
+clean; closed/merged PRs expire holds and purge their checkpoints; `/confirm` cannot be used by the PR author and
+refused users cost no lookups; the output policy now also rejects bare domains, `mailto:`, `//host`, `#123`,
+`org/repo#45` and `GH-9`; on PUBLIC repos high/critical security findings never become PR text (fail closed).
+
+What is still open, in rough order of importance:
+1. **The private channel is unproven.** `PRIVATE_CHANNEL` defaults to `none`, so on public repos those findings
+   currently live only in the database. ADR 0008 lists what must be tried on a real public repo (installation token
+   allowed? draft invisible to read-only users? disabled advisories?). Until then maintainers must read the
+   `findings` table (`drop_reason = 'private delivery failed'`).
+2. **A neutral line is still a signal.** Public PRs end with "Review complete." whether or not something was found,
+   so the text carries no information, but timing, the absence of inline comments and an advisory notification
+   to maintainers can still hint at it. Accepted.
+3. **The vulnerable code itself is public in the diff.** The bot hides its own labelling, not the code.
+4. **"Fixed in <sha>" rests on the model's silence.** A finding is called fixed when the file was re-reviewed
+   completely and the model did not report it again. A model that misses it once would close a real thread
+   (the maintainer can reopen it; nothing is deleted). Same-line matching tolerates 5 lines of drift.
+5. **`/dismiss` trusts a collaborator with write access.** A malicious or compromised maintainer can silence
+   findings. The author of a PR cannot dismiss or confirm on their own PR; everyone else with write access can.
+6. **Architecture agent (off by default).** Related repo files are untrusted input read from the repo at the
+   PR's head commit (a PR author controls them for their own PR). They sit inside the random-marker block and the
+   output goes through the same policy, but the red-team numbers for repo-file injection are NOT measured yet
+   (`python -m evals.architecture_run --confirm-spend`). Do not enable it for repos you do not trust before that.
+7. **Contents API reads are bounded, not private.** Up to 8 files / 40,000 characters of repository text are
+   sent to the model provider per PR when the agent is on (same trust as the diff, but more of the repo).
+8. **Retention.** `webhook_deliveries` (30 days) and finished `jobs` (14 days) are pruned; `findings` and
+   `review_runs` are kept (they hold titles and file paths, never code or rationale text of dropped findings is
+   logged). A deleted delivery id could be processed again if GitHub redelivered it after 30 days.
+9. **Unproven on Postgres in CI.** The 8 skipped tests are the real-Postgres ones; the Phase 10 migrations
+   (`d94f...` to `a9e3...`) were only exercised through SQLite models. Run `alembic upgrade head` on a copy first.
