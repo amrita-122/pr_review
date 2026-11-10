@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     quality_prompt_version: str = "quality_v2"
     # Which review agents run, comma separated: security, quality.
     enabled_agents: str = "security,quality"
+    review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False
     confirm_ttl_hours: float = 72.0

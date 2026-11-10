@@ -72,6 +72,10 @@ async def handle_webhook(
     if pr_event.action not in HANDLED_ACTIONS and pr_event.action != CLOSED_ACTION:
         return {"status": "ignored"}
 
+    if pr_event.is_draft and pr_event.action in HANDLED_ACTIONS and not settings.review_drafts:
+        # Not recorded: marking it ready for review arrives as its own event and is handled then.
+        return {"status": "ignored"}
+
     if delivery_id is None:
         raise HTTPException(status_code=400, detail="Missing X-GitHub-Delivery")
 

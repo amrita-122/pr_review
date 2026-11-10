@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 HANDLED_EVENT = "pull_request"
 ISSUE_COMMENT_EVENT = "issue_comment"
-HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize"})
+HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize", "ready_for_review"})
 CLOSED_ACTION = "closed"  # merged or not: either way the PR is finished
 CONFIRM_COMMAND = "/confirm"
 # A human GitHub login. It ends up in a URL path (/collaborators/{login}/permission).
@@ -36,6 +36,7 @@ class PullRequest(BaseModel):
     head: Head
     # When GitHub last changed this PR. Used only to order out-of-order deliveries of pushes.
     updated_at: datetime | None = None
+    draft: bool = False  # a draft is work in progress: reviewed only if REVIEW_DRAFTS is on
 
 
 class PullRequestEvent(BaseModel):
@@ -62,6 +63,10 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def is_draft(self) -> bool:
+        return self.pull_request.draft
 
     @property
     def head_updated_at(self) -> datetime | None:
