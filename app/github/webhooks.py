@@ -28,6 +28,9 @@ class Owner(BaseModel):
 class Repository(BaseModel):
     name: str
     owner: Owner
+    # None = the payload did not say. Everything that depends on visibility treats None as PUBLIC:
+    # the safe side for a tool that must not publish vulnerability details (ADR 0008).
+    private: bool | None = None
 
 
 class Head(BaseModel):
@@ -65,6 +68,10 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def repo_private(self) -> bool | None:
+        return self.repository.private
 
     @property
     def is_draft(self) -> bool:

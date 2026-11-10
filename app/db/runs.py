@@ -54,6 +54,7 @@ def create_queued(
     prompt_version: str,
     model: str,
     head_updated_at: datetime | None = None,
+    repo_private: bool | None = None,
 ) -> None:
     """Add (not commit) a queued run: the caller commits it together with the job."""
     session.add(
@@ -63,6 +64,7 @@ def create_queued(
             pr_number=pr_number,
             head_sha=head_sha,
             head_updated_at=head_updated_at,
+            repo_private=repo_private,
             status=QUEUED,
             prompt_version=prompt_version,
             model=model,

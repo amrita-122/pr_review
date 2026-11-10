@@ -44,6 +44,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             prompt_version=settings.prompt_version,
             model=settings.model_review,
             head_updated_at=stamp,
+            repo_private=event.repo_private,
         )
     elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
         return False
@@ -55,6 +56,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
         existing.finished_at = None
         existing.failure_comment_posted = False
         existing.head_updated_at = stamp
+        existing.repo_private = event.repo_private
 
     payload = ReviewJobPayload.from_event(event, run_id)
     session.add(
