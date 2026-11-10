@@ -5,6 +5,8 @@ from collections import Counter
 from app.review.schemas import Finding
 
 MAX_SKIPPED_LISTED = 20
+INLINE_NOTE = " See the inline comments."
+MAX_REVIEW_BODY_CHARS = 60_000  # GitHub's limit is 65,536
 MAX_NAME_CHARS = 100
 
 
@@ -37,7 +39,7 @@ def render_summary(
     if findings:
         severities = Counter(f.severity.value for f in findings)
         detail = ", ".join(f"{n} {sev}" for sev, n in severities.items())
-        lines.append(f"{len(findings)} finding(s): {detail}. See the inline comments.")
+        lines.append(f"{len(findings)} finding(s): {detail}.{INLINE_NOTE}")
         categories = Counter(f.category.value for f in findings)
         if len(categories) > 1:
             lines.append(
@@ -66,3 +68,21 @@ def render_summary(
         if len(skipped) > MAX_SKIPPED_LISTED:
             lines.append(f"- ...and {len(skipped) - MAX_SKIPPED_LISTED} more")
     return "\n".join(lines)
+
+
+def render_fallback_summary(summary: str, comments: list[tuple[str, int, str]]) -> str:
+    """The summary for a review whose inline comments GitHub rejected: it must not point at
+    inline comments that do not exist, so it says so and lists the findings in the text itself.
+
+    `comments` = (path, line, body). Paths are untrusted: flattened like every file name.
+    """
+    text = summary.replace(INLINE_NOTE, "")
+    if not comments:
+        return text
+    parts = [
+        text,
+        "",
+        f"GitHub could not attach {len(comments)} comment(s) inline, so they are listed here:",
+    ]
+    parts += [f"\n**`{_inline(path)}` line {line}**\n{body}" for path, line, body in comments]
+    return "\n".join(parts)[:MAX_REVIEW_BODY_CHARS]

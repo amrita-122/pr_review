@@ -264,7 +264,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 - [x] 10.3 PR `closed`/merged (audit): handle the action; expire held runs without commenting on a dead PR, delete their
       checkpoints (they hold source code), and refuse `/confirm` on a closed PR.
 - [x] 10.4 Drafts (audit): skip draft PRs; handle `ready_for_review` (add to the handled actions); setting to turn it off.
-- [ ] 10.5 422 fallback (audit): when inline comments are dropped, say so in the summary (no "See the inline comments")
+- [x] 10.5 422 fallback (audit): when inline comments are dropped, say so in the summary (no "See the inline comments")
       and re-check `review_exists` before the retry.
 - [ ] 10.6 Concurrent duplicate delivery (audit): catch `IntegrityError` on the (repo, pr, sha) unique key; no 500.
 - [ ] 10.7 Pending-comment loss (audit): the "held" flag is set before the POST; a failed POST means nobody is told.

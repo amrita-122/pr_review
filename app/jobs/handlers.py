@@ -38,7 +38,7 @@ from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
-from app.review.render import render_comment, render_summary
+from app.review.render import render_comment, render_fallback_summary, render_summary
 from app.review.schemas import Severity
 from app.review.triage import Triager
 
@@ -299,7 +299,11 @@ async def _post_once(
             raise
         # GitHub rejects the WHOLE review if one comment can't be placed. Never lose the review.
         logger.warning("inline_comments_rejected_posting_summary_only")
-        await post_review(*args, body, [])
+        if await review_exists(*args, marker):  # re-check: never post a second review
+            _critical(lambda s: runs.mark_posted(s, run_id))
+            return "already_posted"
+        fallback = render_fallback_summary(summary, [(c.path, c.line, c.body) for c in comments])
+        await post_review(*args, f"{fallback}\n\n{marker}", [])
     _critical(lambda s: runs.mark_posted(s, run_id))
     return "posted"
 

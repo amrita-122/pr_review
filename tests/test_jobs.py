@@ -166,7 +166,36 @@ async def test_falls_back_to_summary_when_github_rejects_comments(
     enqueue(event)
     await drain()
     assert gh.reviews.call_count == 2
-    assert gh.sent_review(1)["comments"] == []
+    first, retry = gh.sent_review(0), gh.sent_review(1)
+    assert "See the inline comments" in first["body"]
+    assert retry["comments"] == []
+    # 10.5: the retry does not point at comments that do not exist; it lists them instead.
+    assert "See the inline comments" not in retry["body"]
+    assert "could not attach 1 comment(s) inline" in retry["body"]
+    assert "`app/db.py` line 2" in retry["body"]
+    assert gh.reviews_list.call_count == 2  # re-checked for an existing review before the retry
+
+
+@respx.mock
+async def test_review_that_appeared_after_a_422_is_not_posted_twice(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    event = make_event()
+    gh = Pipeline(event)
+
+    def reviews_list(request: httpx.Request) -> httpx.Response:
+        if gh.reviews.call_count == 0:
+            return httpx.Response(200, json=[])
+        run = run_of(db_session)
+        body = f"x\n\n{review_marker(run.id)}"
+        return httpx.Response(200, json=[{"commit_id": event.head_sha, "body": body}])
+
+    gh.reviews_list.mock(side_effect=reviews_list)
+    gh.reviews.mock(return_value=httpx.Response(422, json={}))
+    enqueue(event)
+    await drain()
+    assert gh.reviews.call_count == 1  # the rejected attempt only: no second review
+    assert run_of(db_session).posted_at is not None
 
 
 @respx.mock
