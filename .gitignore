@@ -2,7 +2,12 @@
 *.pem
 __pycache__
 .venv
-docs/
+docs/*
+!docs/demo.gif
+!docs/BUILD-LOG.md
+!docs/ARCHITECTURE.md
+!docs/SECURITY.md
+!docs/decisions/
 .ruff_cache
 .pytest_cache
 .mypy_cache

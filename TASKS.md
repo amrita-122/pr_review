@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 9; Phase 8 done**
+**Current phase: 9; 9.1 done**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -238,7 +238,7 @@ second account (unit-tested only). ADR 0007 accepted.
 
 ---
 ## Phase 9 — Ship and present
-- [ ] 9.1 README final: problem, demo GIF, architecture diagram, design decisions (link ADRs),
+- [x] 9.1 README final: problem, demo GIF, architecture diagram, design decisions (link ADRs),
       eval and red-team results, limitations, how to install.
 - [ ] 9.2 2–3 minute demo video.
 - [ ] 9.3 Write-up (blog / LinkedIn): how you measured the reviewer and the injection results.
