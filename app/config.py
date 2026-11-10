@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     max_output_tokens: int = 2048  # per model call; bounds output spend and runaway generations
     max_findings_per_file: int = 10
     max_comments_per_review: int = 25
+    max_webhook_body_bytes: int = 2_000_000  # larger bodies are refused before the HMAC
     max_listed_pages: int = 3  # pages of 100 files fetched from GitHub; the rest are not listed
     # Job queue (Phase 6). The job deadline must stay below the lease or a live job is reaped.
     job_max_attempts: int = 3

@@ -275,7 +275,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
       `ReviewResult`. Parse per finding (or loosen the schema; policy.py already trims).
 - [x] 10.10 `/confirm` hardening (audit): the PR author cannot confirm their own review; unprivileged users get one short
       reply (not silence); cap permission lookups per PR so comment spam costs ~nothing.
-- [ ] 10.11 GitHub client robustness (audit): invalidate the cached token on 401 in the confirm and expiry paths too;
+- [x] 10.11 GitHub client robustness (audit): invalidate the cached token on 401 in the confirm and expiry paths too;
       honour `Retry-After`; fix the "(more files)" note at exactly 300 files; `review_exists` past 5 pages; cap the webhook body
       size before the HMAC check.
 - [ ] 10.12 Output-policy gaps (audit): bare domains, `mailto:`, `//host`, `#123` and `org/repo#45` cross-references

@@ -52,6 +52,22 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+async def _read_capped_body(request: Request, limit: int) -> bytes:
+    """The raw body, refusing (413) anything over `limit` BEFORE it is all in memory or hashed.
+    The declared Content-Length is checked first, then the bytes actually received."""
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="Payload too large")
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(status_code=413, detail="Payload too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @app.post("/webhooks/github", status_code=202)
 async def handle_webhook(
     request: Request,
@@ -62,7 +78,7 @@ async def handle_webhook(
 ) -> dict[str, str]:
     settings = get_settings()
     secret = settings.github_webhook_secret.get_secret_value()
-    body = await request.body()
+    body = await _read_capped_body(request, settings.max_webhook_body_bytes)
     if not verify_signature(secret, body, signature):
         raise HTTPException(status_code=401)
 

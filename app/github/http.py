@@ -20,10 +20,42 @@ def github_client(timeout: httpx.Timeout = TIMEOUT) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=GITHUB_API, timeout=timeout)
 
 
+RETRY_AFTER_CAP_SECONDS = 30.0  # never let a header park a job for long; the job retries later
+
+
+def retry_after_seconds(response: httpx.Response) -> float | None:
+    """The server's Retry-After (whole seconds), or None if absent or not a plain number."""
+    raw = response.headers.get("retry-after")
+    if raw is None or not raw.strip().isdigit():
+        return None
+    return float(raw.strip())
+
+
 def _retryable(exc: BaseException) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code == 429 or exc.response.status_code >= 500
+        status = exc.response.status_code
+        # 403 + Retry-After is the secondary rate limit.
+        return (
+            status == 429
+            or status >= 500
+            or (status == 403 and retry_after_seconds(exc.response) is not None)
+        )
     return isinstance(exc, httpx.TransportError)  # includes timeouts
+
+
+def _wait(wait_max: float) -> Any:
+    backoff = wait_exponential(multiplier=0.5, max=wait_max)
+
+    def wait(retry_state: Any) -> float:
+        delay: float = backoff(retry_state)
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        if isinstance(exc, httpx.HTTPStatusError):
+            asked = retry_after_seconds(exc.response)
+            if asked is not None:  # honour it, within the cap
+                return min(max(asked, delay), RETRY_AFTER_CAP_SECONDS)
+        return delay
+
+    return wait
 
 
 async def get_with_retry(
@@ -38,7 +70,7 @@ async def get_with_retry(
     """GET with retries on 5xx / 429 / network errors. Reads only: POSTs are never retried here."""
     async for attempt in AsyncRetrying(
         retry=retry_if_exception(_retryable),
-        wait=wait_exponential(multiplier=0.5, max=wait_max),
+        wait=_wait(wait_max),
         stop=stop_after_attempt(attempts),
         reraise=True,
     ):

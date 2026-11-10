@@ -22,7 +22,6 @@ from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
 from app.github.auth import get_installation_token, invalidate_installation_token
 from app.github.client import (
-    FILES_PER_PAGE,
     ReviewComment,
     get_collaborator_permission,
     get_pr_head_sha,
@@ -127,6 +126,12 @@ def _bind_context(payload: ReviewJobPayload) -> None:
     )
 
 
+def _invalidate_on_401(exc: BaseException, installation_id: int) -> None:
+    """A 401 means our cached installation token died early: drop it so the next call mints one."""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
+        invalidate_installation_token(installation_id)
+
+
 async def run_review_job(payload: ReviewJobPayload) -> str:
     """Review one PR head. Returns "posted", "pending" (held), "already_posted", "superseded" or
     "already_handled"; raises JobFailure."""
@@ -137,8 +142,7 @@ async def run_review_job(payload: ReviewJobPayload) -> str:
         return await _run(payload, settings, usage_handler)
     except Exception as exc:
         failure = classify(exc)
-        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
-            invalidate_installation_token(payload.installation_id)
+        _invalidate_on_401(exc, payload.installation_id)
         # No traceback and no exception text: both can carry URLs or secrets.
         logger.warning(
             "job_attempt_failed",
@@ -197,6 +201,7 @@ async def _post_pending_comment(
         await post_pr_comment(token, owner, repo, number, text)
     except Exception as exc:
         logger.warning("pending_comment_not_posted", error=type(exc).__name__)
+        _invalidate_on_401(exc, installation_id)
         _critical(lambda s: runs.release_pending_comment(s, run_id))
         return False
     return True
@@ -269,7 +274,7 @@ async def _run(
 
     parsed_files: dict[str, ParsedFile] = {}
     skipped: list[tuple[str, str]] = []
-    if len(files) >= settings.max_listed_pages * FILES_PER_PAGE:
+    if files.truncated:
         skipped.append(("(more files)", "PR has more files than the listing limit"))
     for changed in files:
         reason = skip_reason(changed.filename, changed.status) or changed.skip_reason
@@ -418,10 +423,19 @@ async def post_failure_notice(payload: ReviewJobPayload) -> None:
         token = await get_installation_token(payload.installation_id)
         await post_pr_comment(token, payload.owner, payload.repo, payload.number, FAILURE_COMMENT)
     except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
         logger.warning("failure_notice_not_posted", error=type(exc).__name__)
 
 
 async def run_confirm_job(payload: ConfirmJobPayload) -> str:
+    try:
+        return await _confirm(payload)
+    except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
+        raise
+
+
+async def _confirm(payload: ConfirmJobPayload) -> str:
     run_id = payload.run_id
     structlog.contextvars.bind_contextvars(run_id=run_id, pr_number=payload.number)
     settings = get_settings()
@@ -561,6 +575,8 @@ async def expire_pending_reviews(
                 token = await get_installation_token(installation_id)
                 await post_pr_comment(token, owner, repo, number, EXPIRED_COMMENT)
         except Exception as exc:
+            if installation_id is not None:
+                _invalidate_on_401(exc, installation_id)
             logger.warning("expire_pending_failed", run_id=run_id, error=type(exc).__name__)
         finally:
             structlog.contextvars.unbind_contextvars("run_id")
