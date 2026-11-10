@@ -157,10 +157,14 @@ def set_retrying(session: Session, run_id: str, *, error: str, reason: str) -> N
     session.commit()
 
 
-def mark_posted(session: Session, run_id: str) -> None:
+def mark_posted(session: Session, run_id: str, *, held: bool = False) -> None:
+    """Record a posted review. held=True is the follow-up review of the confirmed findings."""
     run = session.get(ReviewRun, run_id)
     if run is not None:
-        run.posted_at = datetime.now(UTC)
+        if held:
+            run.held_posted_at = datetime.now(UTC)
+        else:
+            run.posted_at = datetime.now(UTC)
         session.commit()
 
 

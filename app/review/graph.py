@@ -52,7 +52,8 @@ class ReviewOutcome:
     failed: list[str] = field(default_factory=list)  # files whose review step failed (unique)
     dropped: list[Dropped] = field(default_factory=list)  # validator drops, with reason
     raw_count: int = 0  # findings the model produced, before validation
-    pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post
+    pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post those
+    held: list[Finding] = field(default_factory=list)  # the held findings themselves (in memory)
     risk: dict[str, str] = field(
         default_factory=dict
     )  # triage verdict per file (empty = no triage)
@@ -233,12 +234,18 @@ def _held_count(validated: list[Finding], hold_severities: frozenset[Severity]) 
     return sum(f.severity in hold_severities for f in validated)
 
 
-def _to_outcome(values: Mapping[str, Any], pending: int) -> ReviewOutcome:
+def _to_outcome(
+    values: Mapping[str, Any], pending: int, hold_severities: frozenset[Severity] = frozenset()
+) -> ReviewOutcome:
     failed = {path for path, _ in values["errors"]}
     reviewed = {p: f for p, f in values["to_review"].items() if p not in failed}
     return ReviewOutcome(
-        # Fail closed: a paused outcome carries NO findings, so nobody can post them by mistake.
-        findings=[] if pending else values["validated"],
+        # Fail closed: a paused outcome carries only the findings that are NOT held, so nobody can
+        # post a held one by mistake. (ADR 0007, amended in 10.8: the rest is not held.)
+        findings=[f for f in values["validated"] if f.severity not in hold_severities]
+        if pending
+        else values["validated"],
+        held=[f for f in values["validated"] if f.severity in hold_severities] if pending else [],
         reviewed=reviewed,
         # The checkpointer's serializer turns tuples into lists: restore them.
         skipped=[
@@ -302,7 +309,9 @@ async def review_diff(
         existing = await app.aget_state(config)
         if existing.next:  # already paused: a job retry. Do not start again.
             return _to_outcome(
-                existing.values, _held_count(existing.values["validated"], hold_severities)
+                existing.values,
+                _held_count(existing.values["validated"], hold_severities),
+                hold_severities,
             )
         if existing.values:
             # Finished earlier (stale). Without this the findings reducer appends duplicates.
@@ -312,7 +321,9 @@ async def review_diff(
     if checkpointer is not None:
         snap = await app.aget_state(config)
         if snap.next:  # the gate paused
-            return _to_outcome(snap.values, _held_count(snap.values["validated"], hold_severities))
+            return _to_outcome(
+                snap.values, _held_count(snap.values["validated"], hold_severities), hold_severities
+            )
     return _to_outcome(final, 0)
 
 

@@ -31,6 +31,7 @@ def render_summary(
     overflow: int = 0,
     merged: int = 0,
     failed: int = 0,
+    held: int = 0,
 ) -> str:
     """The review's top-level text. `overflow` = findings cut by the comment cap, `merged` =
     duplicates folded into another finding; both are stated so the list is never silently short.
@@ -45,12 +46,16 @@ def render_summary(
             lines.append(
                 "By category: " + ", ".join(f"{n} {cat}" for cat, n in categories.most_common())
             )
+    elif held and not failed and reviewed_count:
+        lines.append("No other findings.")
     elif reviewed_count == 0:
         lines.append("No files were reviewed, so there is nothing to report.")
     elif failed:
         lines.append("No findings in the files that were reviewed.")
     else:
         lines.append("No findings.")
+    if held:
+        lines.append(f"{held} more finding(s) are pending a maintainer's confirmation.")
     if failed:
         lines.append(
             f"{failed} file(s) could NOT be reviewed because a review step failed. "
@@ -86,3 +91,10 @@ def render_fallback_summary(summary: str, comments: list[tuple[str, int, str]]) 
     ]
     parts += [f"\n**`{_inline(path)}` line {line}**\n{body}" for path, line, body in comments]
     return "\n".join(parts)[:MAX_REVIEW_BODY_CHARS]
+
+
+def render_confirmed_summary(findings: list[Finding]) -> str:
+    """Summary of the follow-up review posted after a maintainer's /confirm."""
+    severities = Counter(f.severity.value for f in findings)
+    detail = ", ".join(f"{n} {sev}" for sev, n in severities.items())
+    return f"{len(findings)} finding(s) confirmed by a maintainer: {detail}.{INLINE_NOTE}"

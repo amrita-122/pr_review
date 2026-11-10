@@ -38,7 +38,12 @@ from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
-from app.review.render import render_comment, render_fallback_summary, render_summary
+from app.review.render import (
+    render_comment,
+    render_confirmed_summary,
+    render_fallback_summary,
+    render_summary,
+)
 from app.review.schemas import Severity
 from app.review.triage import Triager
 
@@ -71,9 +76,10 @@ def build_triager() -> Triager | None:
     return build_review_setup(get_settings()).triager
 
 
-def review_marker(run_id: str) -> str:
-    """Hidden marker in our own review body: how a retry recognises a review it already posted."""
-    return f"<!-- review-run:{run_id} -->"
+def review_marker(run_id: str, *, held: bool = False) -> str:
+    """Hidden marker in our own review body: how a retry recognises a review it already posted.
+    The follow-up review of confirmed findings has its own marker (neither contains the other)."""
+    return f"<!-- review-run:{run_id}:held -->" if held else f"<!-- review-run:{run_id} -->"
 
 
 def _critical[T](fn: Callable[[Session], T]) -> T:
@@ -284,7 +290,17 @@ async def _run(
             pre_skipped=skipped,
         )
         if outcome.pending:
-            # Nothing is saved or posted yet: the held findings only count once confirmed.
+            # The held findings are neither saved nor posted until confirmed. The rest of the
+            # review is NOT held (ADR 0007, amended): it goes out now, once.
+            if outcome.findings:
+                _record(
+                    "findings",
+                    lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped),
+                )
+                summary, comments = _render(outcome, held=outcome.pending)
+                if await _post_once(payload, token, summary, comments) == "superseded":
+                    await delete_thread(saver, run_id)
+                    return "superseded"
             result = await _announce_pending(payload, outcome.pending, settings)
             if result == "superseded":
                 await delete_thread(saver, run_id)
@@ -304,7 +320,12 @@ async def _run(
 
 
 async def _post_once(
-    payload: ReviewJobPayload, token: str, summary: str, comments: list[ReviewComment]
+    payload: ReviewJobPayload,
+    token: str,
+    summary: str,
+    comments: list[ReviewComment],
+    *,
+    held: bool = False,
 ) -> str:
     """Post the review unless it is stale or was already posted. Never posts twice."""
     run_id = payload.run_id
@@ -317,14 +338,15 @@ async def _post_once(
         return "superseded"
 
     run = _critical(lambda s: runs.get_run(s, run_id))
-    marker = review_marker(run_id)
-    if run is not None and run.posted_at is not None:
+    marker = review_marker(run_id, held=held)
+    done_at = None if run is None else (run.held_posted_at if held else run.posted_at)
+    if done_at is not None:
         return "already_posted"
     if await review_exists(
         token, payload.owner, payload.repo, payload.number, payload.head_sha, marker
     ):
         # A previous attempt posted, then died before recording it.
-        _critical(lambda s: runs.mark_posted(s, run_id))
+        _critical(lambda s: runs.mark_posted(s, run_id, held=held))
         logger.info("review_already_on_github")
         return "already_posted"
 
@@ -338,15 +360,15 @@ async def _post_once(
         # GitHub rejects the WHOLE review if one comment can't be placed. Never lose the review.
         logger.warning("inline_comments_rejected_posting_summary_only")
         if await review_exists(*args, marker):  # re-check: never post a second review
-            _critical(lambda s: runs.mark_posted(s, run_id))
+            _critical(lambda s: runs.mark_posted(s, run_id, held=held))
             return "already_posted"
         fallback = render_fallback_summary(summary, [(c.path, c.line, c.body) for c in comments])
         await post_review(*args, f"{fallback}\n\n{marker}", [])
-    _critical(lambda s: runs.mark_posted(s, run_id))
+    _critical(lambda s: runs.mark_posted(s, run_id, held=held))
     return "posted"
 
 
-def _render(outcome: ReviewOutcome) -> tuple[str, list[ReviewComment]]:
+def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
     merged = sum(reason == MERGED for _, reason in outcome.dropped)
@@ -357,6 +379,7 @@ def _render(outcome: ReviewOutcome) -> tuple[str, list[ReviewComment]]:
         overflow=overflow,
         merged=merged,
         failed=len(outcome.failed),
+        held=held,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
@@ -415,7 +438,14 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
     )
 
     # 3. A retry after a post that succeeded: do not resume a finished thread.
-    if run.posted_at is not None:
+    # Two shapes of held run: the rest of the review went out BEFORE the hold was recorded
+    # (10.8: posted_at < awaiting_since), or nothing did and the whole review waits for /confirm.
+    follow_up = (
+        run.posted_at is not None
+        and run.awaiting_since is not None
+        and run.posted_at < run.awaiting_since
+    )
+    if (run.held_posted_at if follow_up else run.posted_at) is not None:
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
         async with open_checkpointer(settings) as saver:
             await delete_thread(saver, run_id)
@@ -437,9 +467,18 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
             "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
         )
 
-        # 5. Render, 6. post once (re-checks head SHA and the marker)
-        summary, comments = _render(outcome)
-        result = await _post_once(review, token, summary, comments)
+        # 5. Render, 6. post once (re-checks head SHA and the marker). When the rest of the review
+        # already went out (10.8), only the confirmed findings are posted, as a follow-up review.
+        if follow_up:
+            confirmed = [f for f in outcome.findings if f.severity in settings.held_severities]
+            summary = render_confirmed_summary(confirmed)
+            comments = [
+                ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
+                for f in confirmed
+            ]
+        else:
+            summary, comments = _render(outcome)
+        result = await _post_once(review, token, summary, comments, held=follow_up)
 
         # 7. Finish. _post_once already marked a superseded run.
         if result != "superseded":

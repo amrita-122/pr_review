@@ -70,6 +70,8 @@ class ReviewRun(Base):
         String, nullable=True
     )  # timeout|github|model|internal
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The second review, posted after /confirm, when the non-held findings already went out (10.8).
+    held_posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_comment_posted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
     )

@@ -28,6 +28,16 @@ before a maintainer has seen it, and LLM output goes out under the bot's name wi
 - **Dependency:** `langgraph-checkpoint-postgres` (pulls `psycopg-pool`; `langgraph-checkpoint` 4.2.0 -> 4.3.1).
   The checkpointer creates its own tables; Alembic ignores them. Feature flag `CONFIRMATION_ENABLED`, default off.
 
+## Amendment (2026-11-10, step 10.8)
+- Only the held findings wait for `/confirm`. Everything else in the review is posted at once, as one review.
+- After `/confirm` the held findings go out as a **second review** with its own hidden marker
+  (`review-run:<id>:held`) and its own `held_posted_at`, so each part is idempotent on its own. If nothing but
+  held findings exist, no first review is posted and `/confirm` posts the whole review as before.
+- The "ONE review" rule now reads: one review per part (immediate, confirmed). The first review says only that
+  "N more finding(s) are pending", never a severity.
+- Retries: the first review is posted BEFORE the hold is recorded (`posted_at < awaiting_since` tells the two
+  shapes apart); a failed "pending" comment is re-sent by the worker's housekeeping (step 10.7).
+
 ## Rejected
 - Split posting (non-critical now, critical later): two reviews per PR, breaks "ONE review".
 - Auto-post after N hours: fail-open, defeats the gate.

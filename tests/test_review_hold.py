@@ -214,3 +214,69 @@ async def test_hold_then_confirm_posts_the_review_exactly_once(
     assert sent["body"].count("uv.lock") == 1
     assert run_of(db_session).status == runs.OK
     assert not thread_exists(held, run.id)
+
+
+@respx.mock
+async def test_only_the_critical_finding_is_held_the_rest_of_the_review_posts_now(
+    db_session: Session,
+    held: Saver,
+    enqueue: Enqueue,
+    drain: Drain,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """10.8 (ADR 0007 amended): a medium finding is not withheld because a critical one is held.
+    The critical one follows as a second review after /confirm; nothing is posted twice."""
+    from tests.helpers import FILES
+
+    async def mixed(path: str, numbered: str) -> list[Finding]:
+        severity = Severity.CRITICAL if path == "app/db.py" else Severity.MEDIUM
+        return await reviewer_of(severity)(path, numbered)
+
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: mixed)
+    gh = Pipeline(EVENT)
+    other = {"filename": "app/other.py", "status": "modified", "patch": FILES[0]["patch"]}
+    gh.files.mock(return_value=httpx.Response(200, json=[*FILES, other]))
+    perm = (
+        f"https://api.github.com/repos/{EVENT.owner}/{EVENT.repo}"
+        "/collaborators/maintainer/permission"
+    )
+    respx.get(perm).mock(return_value=httpx.Response(200, json={"permission": "admin"}))
+
+    enqueue(EVENT)
+    await drain()
+
+    # 1. Immediately: the medium finding only, and a note that more is pending (no severity named).
+    assert gh.reviews.call_count == 1
+    first = gh.sent_review(0)
+    assert [c["path"] for c in first["comments"]] == ["app/other.py"]
+    assert "1 more finding(s) are pending" in first["body"] and "critical" not in first["body"]
+    run = run_of(db_session)
+    assert run.status == runs.AWAITING_CONFIRMATION and run.posted_at is not None
+    assert len(comment_bodies(gh)) == 1 and "/confirm" in comment_bodies(gh)[0]
+    # a worker retry of the review job does not post the first review again
+    payload = ReviewJobPayload.from_event(EVENT, run.id)
+    assert await run_review_job(payload) == "pending"
+    assert gh.reviews.call_count == 1
+
+    # 2. After /confirm: a follow-up review with ONLY the critical finding, under its own marker.
+    confirm = ConfirmJobPayload(
+        run_id=run.id,
+        installation_id=EVENT.installation_id,
+        owner=EVENT.owner,
+        repo=EVENT.repo,
+        number=EVENT.number,
+        comment_id=9,
+        commenter_login="maintainer",
+    )
+    db_session.add(Job(kind=CONFIRM_REVIEW, payload=confirm.model_dump()))
+    db_session.commit()
+    await drain()
+
+    assert gh.reviews.call_count == 2
+    second = gh.sent_review(1)
+    assert [c["path"] for c in second["comments"]] == ["app/db.py"]
+    assert handlers.review_marker(run.id, held=True) in second["body"]
+    assert handlers.review_marker(run.id, held=True) != handlers.review_marker(run.id)
+    final = run_of(db_session)
+    assert final.status == runs.OK and final.held_posted_at is not None
+    assert not thread_exists(held, run.id)

@@ -269,7 +269,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 - [x] 10.6 Concurrent duplicate delivery (audit): catch `IntegrityError` on the (repo, pr, sha) unique key; no 500.
 - [x] 10.7 Pending-comment loss (audit): the "held" flag is set before the POST; a failed POST means nobody is told.
       Set it only after the comment is posted (or reset it on failure).
-- [ ] 10.8 Hold only critical findings (audit; amends ADR 0007): non-critical findings are not withheld. Exact posting
+- [x] 10.8 Hold only critical findings (audit; amends ADR 0007): non-critical findings are not withheld. Exact posting
       shape is set in ADR 0008. Update ADR 0007's status line when done.
 - [ ] 10.9 One bad field must not drop a file's findings (audit): schemas.py `title max_length` / `line ge=1` fail the whole
       `ReviewResult`. Parse per finding (or loosen the schema; policy.py already trims).

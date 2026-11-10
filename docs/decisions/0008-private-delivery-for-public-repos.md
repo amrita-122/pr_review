@@ -21,10 +21,9 @@ ADR 0007 held critical findings for a human but still posted them publicly after
 - **Public repo:** high and critical SECURITY findings go to a draft security advisory. The PR gets one neutral line at
   the end of the review ("review complete"), with no category, severity, file or line. Medium, low and non-security
   findings stay inline. The `/confirm` pending comment on a public repo must not name the severity either.
-- Hold only critical findings (amends ADR 0007, which held the whole review). OPEN POINT, decided when 10.8 is
-  planned: non-critical findings posted at once with critical ones added after `/confirm` means two reviews per PR,
-  which ADR 0007 rejected ("ONE review") — choose between two reviews and keeping one review with the critical
-  findings moved to the private channel.
+- Hold only critical findings (amends ADR 0007; decided in 10.8): non-critical findings are posted at once, and the
+  held critical ones follow as a second review after `/confirm` (see ADR 0007's amendment). On a public repo the
+  high/critical security findings never reach a PR, so no follow-up review exists there; they go to the advisory.
 - If the advisory API or permission does not work as expected, fall back to email and record why here.
 
 ## Consequences
