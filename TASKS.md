@@ -280,7 +280,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
       size before the HMAC check.
 - [x] 10.12 Output-policy gaps (audit): bare domains, `mailto:`, `//host`, `#123` and `org/repo#45` cross-references
       (they create backlinks on other issues). Add red-team cases for each and re-run the eval gate.
-- [ ] 10.13 Padding + config hygiene (audit): review files risk-first, not in API order, before the size caps; validate
+- [x] 10.13 Padding + config hygiene (audit): review files risk-first, not in API order, before the size caps; validate
       `ENABLED_AGENTS`, `CONFIRM_SEVERITIES`, `PROMPT_VERSION` at startup; index `review_runs(status, awaiting_since)`;
       prune old `webhook_deliveries` and finished `jobs`; dedupe the `skipped` list.
 **Done when:** each item above has a failing-then-passing test, CI is green, and the two verified bugs are reproduced

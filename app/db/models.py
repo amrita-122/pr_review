@@ -47,6 +47,8 @@ class ReviewRun(Base):
     __tablename__ = "review_runs"
     __table_args__ = (
         UniqueConstraint("repo", "pr_number", "head_sha", name="uq_review_runs_pr_head"),
+        # list_expired / list_unannounced / confirm lookups all filter on these two columns
+        Index("ix_review_runs_status_awaiting_since", "status", "awaiting_since"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)

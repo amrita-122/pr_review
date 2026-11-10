@@ -15,7 +15,7 @@ from app.diff.parse import ParsedFile
 from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
 from app.review.llm import Reviewer, reviewer_key
 from app.review.schemas import Agent, Finding, ReviewFinding, Severity
-from app.review.triage import Risk, Triager
+from app.review.triage import Risk, Triager, rule_risk
 from app.review.validate import Dropped, partition_findings
 
 logger = structlog.get_logger()
@@ -83,7 +83,13 @@ def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing 
         to_review: dict[str, ParsedFile] = {}
         skipped: list[tuple[str, str]] = []
         total = 0
-        for path, parsed in state["files"].items():
+        # Risk first, API order second (the sort is stable). The caps below cut from the END, so
+        # padding a PR with big harmless files cannot push the risky file out of the review.
+        rank = {"high": 0, None: 1, "low": 2}
+        ordered = sorted(
+            state["files"].items(), key=lambda item: rank[rule_risk(item[0], item[1].numbered)]
+        )
+        for path, parsed in ordered:
             size = len(parsed.numbered)
             if len(to_review) >= limits.max_files:
                 skipped.append((path, f"over the {limits.max_files}-file limit"))
@@ -248,10 +254,14 @@ def _to_outcome(
         held=[f for f in values["validated"] if f.severity in hold_severities] if pending else [],
         reviewed=reviewed,
         # The checkpointer's serializer turns tuples into lists: restore them.
-        skipped=[
-            (path, reason)
-            for path, reason in values["pre_skipped"] + values["limit_skipped"] + values["errors"]
-        ],
+        skipped=list(
+            dict.fromkeys(
+                (path, reason)
+                for path, reason in values["pre_skipped"]
+                + values["limit_skipped"]
+                + values["errors"]
+            )
+        ),
         failed=sorted(failed),
         dropped=[(item, reason) for item, reason in values["dropped"]],
         raw_count=len(values["findings"]),
