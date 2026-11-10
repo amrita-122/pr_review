@@ -321,8 +321,12 @@ nothing in the PR, its checks or its comments names the vulnerability.
 - [x] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
       validation layers. Repo files get the same randomized delimiters and output policy as the diff. Findings have no line:
       they go to the summary (private repo) or the private channel (public repo, high/critical).
-- [ ] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
+- [~] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
       measure precision/recall and cost; record results in README and SECURITY.md.
+      PARTLY DONE: 12 golden cases (6 planted flaws, 4 clean designs... see evals/architecture_cases.py), 5 red-team
+      cases (injection inside a repo file) and the runner `python -m evals.architecture_run --confirm-spend` exist and
+      their scoring is unit-tested. NOT DONE: the real measurement (it spends money, so it needs your go) and the README/
+      SECURITY.md numbers.
 - [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
 **Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
 numbers justify turning it on.
