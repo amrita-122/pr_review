@@ -352,3 +352,55 @@ def list_superseded_holds(session: Session, repo: str, pr_number: int) -> list[s
             )
         ).all()
     )
+
+
+# --- PR closed / merged ---------------------------------------------------------------------
+
+
+def close_pr_runs(
+    session: Session, repo: str, pr_number: int, updated_at: datetime | None = None
+) -> tuple[int, int]:
+    """The PR was closed or merged (no commit). Returns (held_expired, in_progress_superseded).
+
+    - A held run becomes `expired` QUIETLY (no comment on a dead PR) and its checkpoint is queued
+      for deletion. Nobody can /confirm it any more: confirmation only claims held runs.
+    - A queued/running run is superseded: it must not spend more money or post.
+    - A run stamped LATER than this event belongs to a push or reopen that the close preceded
+      (deliveries can arrive out of order): it is left alone.
+    - A `confirming` run is already posting; leave it.
+    """
+    conditions = [
+        ReviewRun.repo == repo,
+        ReviewRun.pr_number == pr_number,
+    ]
+    if updated_at is not None:
+        conditions.append(
+            or_(ReviewRun.head_updated_at.is_(None), ReviewRun.head_updated_at <= updated_at)
+        )
+    now = datetime.now(UTC)
+    held = session.execute(
+        update(ReviewRun)
+        .where(*conditions, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(status=EXPIRED, finished_at=now, expired_comment_posted=True, purge_checkpoint=True)
+    )
+    running = session.execute(
+        update(ReviewRun)
+        .where(*conditions, ReviewRun.status.in_((QUEUED, RUNNING)))
+        .values(status=SUPERSEDED, finished_at=now)
+    )
+    return int(held.rowcount), int(running.rowcount)  # type: ignore[attr-defined]
+
+
+def list_checkpoints_to_purge(session: Session) -> list[str]:
+    return list(
+        session.scalars(
+            select(ReviewRun.id).where(
+                ReviewRun.purge_checkpoint.is_(True), ReviewRun.status == EXPIRED
+            )
+        ).all()
+    )
+
+
+def mark_checkpoint_purged(session: Session, run_id: str) -> None:
+    session.execute(update(ReviewRun).where(ReviewRun.id == run_id).values(purge_checkpoint=False))
+    session.commit()

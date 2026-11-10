@@ -10,6 +10,7 @@ from app.db import runs
 from app.db.deliveries import record_delivery
 from app.db.session import get_session
 from app.github.webhooks import (
+    CLOSED_ACTION,
     HANDLED_ACTIONS,
     HANDLED_EVENT,
     ISSUE_COMMENT_EVENT,
@@ -68,7 +69,7 @@ async def handle_webhook(
     except ValidationError:
         raise HTTPException(status_code=422, detail="Invalid payload") from None
 
-    if pr_event.action not in HANDLED_ACTIONS:
+    if pr_event.action not in HANDLED_ACTIONS and pr_event.action != CLOSED_ACTION:
         return {"status": "ignored"}
 
     if delivery_id is None:
@@ -77,6 +78,13 @@ async def handle_webhook(
     # Insert first: the primary key makes redeliveries a no-op.
     if not record_delivery(session, delivery_id, event, pr_event.action):
         return {"status": "duplicate"}
+
+    if pr_event.action == CLOSED_ACTION:
+        # A dead PR gets no more reviews, comments or confirmations. Nothing is queued.
+        repo = f"{pr_event.owner}/{pr_event.repo}"
+        runs.close_pr_runs(session, repo, pr_event.number, pr_event.head_updated_at)
+        session.commit()
+        return {"status": "closed"}
 
     # Delivery + run + job are committed together: a crash can never record a delivery whose
     # review job was lost. If this raises, nothing is saved and GitHub's redelivery works.

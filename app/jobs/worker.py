@@ -35,6 +35,7 @@ from app.jobs.errors import INTERNAL, JobFailure, classify
 from app.jobs.handlers import (
     expire_pending_reviews,
     post_failure_notice,
+    purge_closed_checkpoints,
     run_confirm_job,
     run_review_job,
 )
@@ -310,6 +311,7 @@ async def run_worker(settings: Settings, stop: asyncio.Event, *, once: bool = Fa
             next_expiry_check = time.monotonic() + EXPIRY_CHECK_SECONDS
             try:
                 await expire_pending_reviews(settings)
+                await purge_closed_checkpoints(settings)
             except Exception as exc:  # housekeeping must never stop the worker
                 logger.warning("expiry_check_failed", error=type(exc).__name__)
         try:

@@ -82,6 +82,8 @@ class ReviewRun(Base):
     expired_comment_posted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
     )
+    # Set when the PR closed while this run was held: its checkpoint (it holds source code) must go.
+    purge_checkpoint: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     confirmed_by: Mapped[str | None] = mapped_column(String, nullable=True)  # GitHub login
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

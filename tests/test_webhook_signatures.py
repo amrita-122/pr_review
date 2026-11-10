@@ -88,7 +88,7 @@ def test_other_handled_actions_accepted(action: str) -> None:
     assert post_signed(body_with_action(action)).json() == {"status": "accepted"}
 
 
-@pytest.mark.parametrize("action", ["closed", "labeled", "edited"])
+@pytest.mark.parametrize("action", ["labeled", "edited"])
 def test_unhandled_action_ignored(action: str) -> None:
     response = post_signed(body_with_action(action))
     assert response.status_code == 202

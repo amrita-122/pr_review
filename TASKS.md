@@ -261,7 +261,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
       Test: deliver push 2 then push 1 -> exactly one review, on the latest sha.
 - [x] 10.2 False all-clear (verified): render.py prints "No findings." when 0 files were reviewed or files failed.
       Say what was NOT reviewed; a run with failed files is not "clean". Test: all files fail -> never "No findings".
-- [ ] 10.3 PR `closed`/merged (audit): handle the action; expire held runs without commenting on a dead PR, delete their
+- [x] 10.3 PR `closed`/merged (audit): handle the action; expire held runs without commenting on a dead PR, delete their
       checkpoints (they hold source code), and refuse `/confirm` on a closed PR.
 - [ ] 10.4 Drafts (audit): skip draft PRs; handle `ready_for_review` (add to the handled actions); setting to turn it off.
 - [ ] 10.5 422 fallback (audit): when inline comments are dropped, say so in the summary (no "See the inline comments")

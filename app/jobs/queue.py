@@ -54,6 +54,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
         existing.failure_reason = None
         existing.finished_at = None
         existing.failure_comment_posted = False
+        existing.head_updated_at = stamp
 
     payload = ReviewJobPayload.from_event(event, run_id)
     session.add(

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 HANDLED_EVENT = "pull_request"
 ISSUE_COMMENT_EVENT = "issue_comment"
 HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize"})
+CLOSED_ACTION = "closed"  # merged or not: either way the PR is finished
 CONFIRM_COMMAND = "/confirm"
 # A human GitHub login. It ends up in a URL path (/collaborators/{login}/permission).
 LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}$")

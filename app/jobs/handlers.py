@@ -453,3 +453,21 @@ async def expire_pending_reviews(
         finally:
             structlog.contextvars.unbind_contextvars("run_id")
     return expired
+
+
+async def purge_closed_checkpoints(
+    settings: Settings,
+    open_saver: Callable[[Settings], AbstractAsyncContextManager[Any]] = open_checkpointer,
+) -> int:
+    """Delete the checkpoints of held runs whose PR closed (they hold source code).
+    Retried on the next sweep when a deletion fails. Returns how many were purged."""
+    if not settings.confirmation_enabled:
+        return 0
+    ids = _critical(lambda s: runs.list_checkpoints_to_purge(s))
+    purged = 0
+    for run_id in ids:
+        async with open_saver(settings) as saver:
+            if await delete_thread(saver, run_id):
+                _critical(lambda s, rid=run_id: runs.mark_checkpoint_purged(s, rid))  # type: ignore[misc]
+                purged += 1
+    return purged
