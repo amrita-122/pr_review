@@ -470,6 +470,25 @@ def record_denial(session: Session, run_id: str, login: str) -> bool:
     return True
 
 
+def list_known_findings(
+    session: Session, repo: str, pr_number: int, exclude_run_id: str
+) -> list[tuple[str, str, int]]:
+    """(file, category, line) of every finding that is visible on this PR from OTHER runs:
+    posted, and not dismissed as a false positive."""
+    rows = session.execute(
+        select(FindingRow.file, FindingRow.category, FindingRow.line)
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != exclude_run_id,
+            ReviewRun.posted_at.is_not(None),  # a review that really went out
+            FindingRow.posted.is_(True),
+        )
+    ).all()
+    return [(r.file, r.category, r.line) for r in rows]
+
+
 def save_github_ids(
     session: Session,
     run_id: str,

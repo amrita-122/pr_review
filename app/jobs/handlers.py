@@ -35,6 +35,7 @@ from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
+from app.review.dedupe import ALREADY_POSTED, KnownFinding
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
 from app.review.render import (
@@ -290,6 +291,13 @@ async def _run(
     if _critical(lambda s: runs.is_superseded(s, run_id)):  # don't pay for a stale review
         return "superseded"
 
+    # Findings already commented on this PR by earlier pushes are not posted again.
+    known = tuple(
+        KnownFinding(file=f, category=c, line=n)
+        for f, c, n in _critical(
+            lambda s: runs.list_known_findings(s, payload.repo_full_name, payload.number, run_id)
+        )
+    )
     async with _checkpointer_scope(settings) as saver:
         if saver is not None:
             await _drop_superseded_holds(saver, payload)
@@ -312,6 +320,7 @@ async def _run(
             checkpointer=saver,
             thread_id=run_id if saver is not None else None,
             pre_skipped=skipped,
+            known=known,
         )
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
@@ -408,6 +417,7 @@ async def _post_once(
 def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
+    repeated = sum(reason == ALREADY_POSTED for _, reason in outcome.dropped)
     merged = sum(reason == MERGED for _, reason in outcome.dropped)
     summary = render_summary(
         len(outcome.reviewed),
@@ -417,6 +427,7 @@ def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComm
         merged=merged,
         failed=len(outcome.failed),
         held=held,
+        repeated=repeated,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
