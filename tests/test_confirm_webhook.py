@@ -171,3 +171,29 @@ def test_feature_flag_off_ignores_everything(
 
 def test_malformed_comment_payload_is_a_422() -> None:
     assert post_signed(b'{"action": "created"}', event="issue_comment").status_code == 422
+
+
+def test_a_refused_login_is_ignored_without_queuing_another_job(db_session: Session) -> None:
+    """10.10: comment spam from a refused account costs nothing (no job, no permission lookup)."""
+    hold(db_session)
+    assert post_signed(comment(), event="issue_comment").json() == {"status": "accepted"}
+    runs.record_denial(db_session, "run1", RAW["comment"]["user"]["login"])
+    assert post_signed(comment(), event="issue_comment").json() == {"status": "ignored"}
+    assert count(db_session, Job) == 1
+
+
+def test_after_many_refusals_every_confirm_is_ignored_for_free(db_session: Session) -> None:
+    from app.main import MAX_DENIED_LOGINS_PER_RUN
+
+    hold(db_session)
+    for n in range(MAX_DENIED_LOGINS_PER_RUN):
+        runs.record_denial(db_session, "run1", f"spammer{n}")
+    assert post_signed(comment(), event="issue_comment").json() == {"status": "ignored"}
+    assert count(db_session, Job) == 0
+
+
+def test_the_pr_author_is_passed_to_the_job(db_session: Session) -> None:
+    hold(db_session)
+    post_signed(comment(), event="issue_comment")
+    job = db_session.scalars(select(Job)).one()
+    assert job.payload["author_login"] == RAW["issue"]["user"]["login"]

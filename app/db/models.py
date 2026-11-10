@@ -108,6 +108,17 @@ class FindingRow(Base):
     drop_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+class ConfirmDenial(Base):
+    """A login that tried /confirm on a held run and was refused. One row per (run, login): the
+    webhook ignores repeats for free, so comment spam costs no permission lookups."""
+
+    __tablename__ = "confirm_denials"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("review_runs.id"), primary_key=True)
+    login: Mapped[str] = mapped_column(String, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Job(Base):
     """A unit of background work. Claimed with FOR UPDATE SKIP LOCKED (app/jobs/worker.py).
 

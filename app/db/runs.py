@@ -9,9 +9,10 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import delete, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import FindingRow, ReviewRun
+from app.db.models import ConfirmDenial, FindingRow, ReviewRun
 from app.review.schemas import Finding
 
 MAX_ERROR_CHARS = 500
@@ -435,3 +436,27 @@ def list_checkpoints_to_purge(session: Session) -> list[str]:
 def mark_checkpoint_purged(session: Session, run_id: str) -> None:
     session.execute(update(ReviewRun).where(ReviewRun.id == run_id).values(purge_checkpoint=False))
     session.commit()
+
+
+# --- /confirm refusals ------------------------------------------------------------------------
+
+
+def is_denied(session: Session, run_id: str, login: str) -> bool:
+    return session.get(ConfirmDenial, (run_id, login)) is not None
+
+
+def denial_count(session: Session, run_id: str) -> int:
+    return len(
+        list(session.scalars(select(ConfirmDenial.login).where(ConfirmDenial.run_id == run_id)))
+    )
+
+
+def record_denial(session: Session, run_id: str, login: str) -> bool:
+    """True if this login was newly refused (False: already on record)."""
+    session.add(ConfirmDenial(run_id=run_id, login=login))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return False
+    return True

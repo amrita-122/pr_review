@@ -42,6 +42,7 @@ class ConfirmJobPayload(BaseModel):
     number: int
     comment_id: int
     commenter_login: str = Field(pattern=r"^[A-Za-z0-9-]{1,39}$")  # goes into a URL path
+    author_login: str | None = None  # the PR's author: may not confirm their own review
 
     @property
     def repo_full_name(self) -> str:

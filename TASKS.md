@@ -271,9 +271,9 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
       Set it only after the comment is posted (or reset it on failure).
 - [x] 10.8 Hold only critical findings (audit; amends ADR 0007): non-critical findings are not withheld. Exact posting
       shape is set in ADR 0008. Update ADR 0007's status line when done.
-- [ ] 10.9 One bad field must not drop a file's findings (audit): schemas.py `title max_length` / `line ge=1` fail the whole
+- [x] 10.9 One bad field must not drop a file's findings (audit): schemas.py `title max_length` / `line ge=1` fail the whole
       `ReviewResult`. Parse per finding (or loosen the schema; policy.py already trims).
-- [ ] 10.10 `/confirm` hardening (audit): the PR author cannot confirm their own review; unprivileged users get one short
+- [x] 10.10 `/confirm` hardening (audit): the PR author cannot confirm their own review; unprivileged users get one short
       reply (not silence); cap permission lookups per PR so comment spam costs ~nothing.
 - [ ] 10.11 GitHub client robustness (audit): invalidate the cached token on 401 in the confirm and expiry paths too;
       honour `Retry-After`; fix the "(more files)" note at exactly 300 files; `review_exists` past 5 pages; cap the webhook body

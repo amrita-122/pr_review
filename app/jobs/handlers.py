@@ -56,6 +56,25 @@ EXPIRED_COMMENT = (
 )
 
 
+NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
+AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
+MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
+
+
+async def _refuse(payload: ConfirmJobPayload, token: str, text: str) -> None:
+    """Remember the refusal (so the webhook ignores repeats) and answer ONCE per person, with a
+    cap per run. Best effort: a failed reply changes nothing."""
+    run_id, login = payload.run_id, payload.commenter_login
+    if not _critical(lambda s: runs.record_denial(s, run_id, login)):
+        return
+    if _critical(lambda s: runs.denial_count(s, run_id)) > MAX_REFUSAL_REPLIES_PER_RUN:
+        return
+    try:
+        await post_pr_comment(token, payload.owner, payload.repo, payload.number, text)
+    except Exception as exc:
+        logger.warning("refusal_reply_not_posted", error=type(exc).__name__)
+
+
 def pending_comment(held: int, severities: frozenset[Severity]) -> str:
     """Static text. It carries a count and our own severity names, never anything from the PR."""
     names = "/".join(sorted(s.value for s in severities))
@@ -407,6 +426,17 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
     structlog.contextvars.bind_contextvars(run_id=run_id, pr_number=payload.number)
     settings = get_settings()
 
+    # 0. Nobody confirms their own review, whatever their permission (the author is the party
+    # the findings are about). Checked before any permission lookup.
+    if payload.author_login is not None and payload.author_login.lower() == (
+        payload.commenter_login.lower()
+    ):
+        logger.info("confirm_ignored", reason="author")
+        await _refuse(
+            payload, await get_installation_token(payload.installation_id), AUTHOR_COMMENT
+        )
+        return "ignored"
+
     # 1. Permission, asked of GitHub (the comment's own author_association is only a hint).
     token = await get_installation_token(payload.installation_id)
     permission = await get_collaborator_permission(
@@ -414,6 +444,7 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
     )
     if not is_allowed(permission):
         logger.info("confirm_ignored", reason="not_allowed")
+        await _refuse(payload, token, NOT_ALLOWED_COMMENT)
         return "ignored"  # not an error: a retry would not change the answer
 
     # 2. Claim: awaiting_confirmation -> confirming, atomically. Losing is not a failure.

@@ -88,6 +88,7 @@ class Comment(BaseModel):
 
 class IssueRef(BaseModel):
     number: int
+    user: CommentUser | None = None  # the author of the PR (a PR is an issue)
     # Only present when the comment is on a PR. Plain issues omit it.
     pull_request: dict[str, Any] | None = None
 
@@ -120,6 +121,10 @@ class IssueCommentEvent(BaseModel):
     @property
     def login(self) -> str:
         return self.comment.user.login
+
+    @property
+    def author_login(self) -> str | None:
+        return self.issue.user.login if self.issue.user is not None else None
 
     @property
     def is_confirm_request(self) -> bool:

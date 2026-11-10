@@ -27,6 +27,10 @@ from app.observability import configure_tracing
 
 logger = structlog.get_logger()
 
+# After this many different logins were refused on one held review, further /confirm comments are
+# ignored without a lookup. (A maintainer can still push a new commit to start over.)
+MAX_DENIED_LOGINS_PER_RUN = 10
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -132,6 +136,11 @@ def _handle_issue_comment(session: Session, body: bytes, delivery_id: str | None
     held = runs.get_awaiting_for_pr(session, repo, comment_event.number)
     if held is None:
         return {"status": "ignored"}  # not recorded: a later redelivery may still be useful
+    # Already refused once, or too many different people refused: costs nothing, looks up nothing.
+    if runs.is_denied(session, held.id, comment_event.login) or (
+        runs.denial_count(session, held.id) >= MAX_DENIED_LOGINS_PER_RUN
+    ):
+        return {"status": "ignored"}
 
     if not record_delivery(session, delivery_id, ISSUE_COMMENT_EVENT, comment_event.action):
         return {"status": "duplicate"}
@@ -143,6 +152,7 @@ def _handle_issue_comment(session: Session, body: bytes, delivery_id: str | None
         number=comment_event.number,
         comment_id=comment_event.comment.id,
         commenter_login=comment_event.login,
+        author_login=comment_event.author_login,
     )
     enqueue_confirm(session, payload, settings)
     session.commit()  # delivery + job together, like a review
