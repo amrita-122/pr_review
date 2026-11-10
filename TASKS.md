@@ -267,7 +267,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 - [x] 10.5 422 fallback (audit): when inline comments are dropped, say so in the summary (no "See the inline comments")
       and re-check `review_exists` before the retry.
 - [x] 10.6 Concurrent duplicate delivery (audit): catch `IntegrityError` on the (repo, pr, sha) unique key; no 500.
-- [ ] 10.7 Pending-comment loss (audit): the "held" flag is set before the POST; a failed POST means nobody is told.
+- [x] 10.7 Pending-comment loss (audit): the "held" flag is set before the POST; a failed POST means nobody is told.
       Set it only after the comment is posted (or reset it on failure).
 - [ ] 10.8 Hold only critical findings (audit; amends ADR 0007): non-critical findings are not withheld. Exact posting
       shape is set in ADR 0008. Update ADR 0007's status line when done.

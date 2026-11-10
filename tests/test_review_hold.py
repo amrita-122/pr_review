@@ -101,15 +101,25 @@ async def test_a_retried_job_does_not_review_or_announce_again(
 
 
 @respx.mock
-async def test_a_failing_pending_comment_does_not_fail_the_job(
+async def test_a_failing_pending_comment_does_not_fail_the_job_and_is_sent_later(
     db_session: Session, held: Saver, enqueue: Enqueue, drain: Drain
 ) -> None:
+    """10.7: a failed POST must not leave the maintainers uninformed."""
     gh = Pipeline(EVENT)
     gh.comments.mock(return_value=httpx.Response(500))
     enqueue(EVENT)
     await drain()
-    assert run_of(db_session).status == runs.AWAITING_CONFIRMATION
+    run = run_of(db_session)
+    assert run.status == runs.AWAITING_CONFIRMATION
     assert db_session.scalars(select(Job)).one().status == "done"  # the paid review is not redone
+    assert run.pending_comment_posted is False  # the claim was given back
+    assert run.held_count == 1
+
+    gh.comments.mock(return_value=httpx.Response(201, json={}))
+    assert await handlers.announce_unannounced_holds(get_settings()) == 1
+    assert await handlers.announce_unannounced_holds(get_settings()) == 0  # once, not forever
+    assert "1 critical finding(s) pending" in comment_bodies(gh)[-1]
+    assert run_of(db_session).pending_comment_posted is True
 
 
 @respx.mock

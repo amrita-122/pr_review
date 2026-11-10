@@ -33,6 +33,7 @@ from app.db.models import Job
 from app.db.session import get_session
 from app.jobs.errors import INTERNAL, JobFailure, classify
 from app.jobs.handlers import (
+    announce_unannounced_holds,
     expire_pending_reviews,
     post_failure_notice,
     purge_closed_checkpoints,
@@ -312,6 +313,7 @@ async def run_worker(settings: Settings, stop: asyncio.Event, *, once: bool = Fa
             try:
                 await expire_pending_reviews(settings)
                 await purge_closed_checkpoints(settings)
+                await announce_unannounced_holds(settings)
             except Exception as exc:  # housekeeping must never stop the worker
                 logger.warning("expiry_check_failed", error=type(exc).__name__)
         try:

@@ -152,23 +152,61 @@ async def _checkpointer_scope(settings: Settings) -> AsyncIterator[Any]:
         yield saver
 
 
+async def _post_pending_comment(
+    run_id: str,
+    installation_id: int,
+    repo_full_name: str,
+    number: int,
+    held: int,
+    settings: Settings,
+) -> bool:
+    """Claim the right to announce the hold, then post it. If the POST fails the claim is given
+    back, so the next sweep tries again: a held review nobody was told about is a lost review.
+    True = posted (or someone else already did)."""
+    if not _critical(lambda s: runs.claim_pending_comment(s, run_id)):
+        return True
+    try:
+        owner, _, repo = repo_full_name.partition("/")
+        token = await get_installation_token(installation_id)
+        text = pending_comment(held, settings.held_severities)
+        await post_pr_comment(token, owner, repo, number, text)
+    except Exception as exc:
+        logger.warning("pending_comment_not_posted", error=type(exc).__name__)
+        _critical(lambda s: runs.release_pending_comment(s, run_id))
+        return False
+    return True
+
+
 async def _announce_pending(payload: ReviewJobPayload, held: int, settings: Settings) -> str:
-    """The review is held. Record it and say so ONCE. Never raises after the hold is recorded:
-    a failed comment must not re-run the (paid) review."""
+    """The review is held. Record it and say so. Never raises after the hold is recorded:
+    a failed comment must not re-run the (paid) review; the sweep retries the comment."""
     run_id = payload.run_id
     if not _critical(
-        lambda s: runs.mark_awaiting(s, run_id, installation_id=payload.installation_id)
+        lambda s: runs.mark_awaiting(s, run_id, installation_id=payload.installation_id, held=held)
     ):
         return "superseded"  # a newer push replaced this run while it was reviewing
     logger.info("review_held", held=held)
-    try:
-        if _critical(lambda s: runs.claim_pending_comment(s, run_id)):
-            token = await get_installation_token(payload.installation_id)
-            text = pending_comment(held, settings.held_severities)
-            await post_pr_comment(token, payload.owner, payload.repo, payload.number, text)
-    except Exception as exc:
-        logger.warning("pending_comment_not_posted", error=type(exc).__name__)
+    run = _critical(lambda s: runs.get_run(s, run_id))
+    count = run.held_count if run is not None else held
+    await _post_pending_comment(
+        run_id, payload.installation_id, payload.repo_full_name, payload.number, count, settings
+    )
     return "pending"
+
+
+async def announce_unannounced_holds(settings: Settings) -> int:
+    """Housekeeping: re-send the 'pending' comment for held runs whose first attempt failed.
+    Returns how many were posted."""
+    if not settings.confirmation_enabled:
+        return 0
+    posted = 0
+    due = _critical(lambda s: runs.list_unannounced(s))
+    for run_id, repo_full_name, number, installation_id, held in due:
+        if await _post_pending_comment(
+            run_id, installation_id, repo_full_name, number, held, settings
+        ):
+            posted += 1
+    return posted
 
 
 async def _drop_superseded_holds(saver: Any, payload: ReviewJobPayload) -> None:

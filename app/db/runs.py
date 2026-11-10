@@ -238,17 +238,22 @@ def save_findings(
 # --- Phase 8: human confirmation ------------------------------------------------------------
 
 
-def mark_awaiting(session: Session, run_id: str, *, installation_id: int) -> bool:
+def mark_awaiting(
+    session: Session, run_id: str, *, installation_id: int, held: int | None = None
+) -> bool:
     """running -> awaiting_confirmation. False if the run is gone or no longer running
     (a superseded run must not become pending)."""
+    values: dict[str, object] = {
+        "status": AWAITING_CONFIRMATION,
+        "installation_id": installation_id,
+        "awaiting_since": datetime.now(UTC),
+    }
+    if held:  # a retry that does not know the count must not erase it
+        values["held_count"] = held
     result = session.execute(
         update(ReviewRun)
         .where(ReviewRun.id == run_id, ReviewRun.status.in_((RUNNING, AWAITING_CONFIRMATION)))
-        .values(
-            status=AWAITING_CONFIRMATION,
-            installation_id=installation_id,
-            awaiting_since=datetime.now(UTC),
-        )
+        .values(**values)
     )
     session.commit()
     return bool(result.rowcount)  # type: ignore[attr-defined]
@@ -301,6 +306,28 @@ def claim_pending_comment(session: Session, run_id: str) -> bool:
     )
     session.commit()
     return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def release_pending_comment(session: Session, run_id: str) -> None:
+    """The 'pending' comment could not be posted: give the right back so it is tried again."""
+    session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(pending_comment_posted=False)
+    )
+    session.commit()
+
+
+def list_unannounced(session: Session) -> list[tuple[str, str, int, int, int]]:
+    """Held runs nobody has been told about: (run_id, repo, pr_number, installation_id, held)."""
+    rows = session.scalars(
+        select(ReviewRun).where(
+            ReviewRun.status == AWAITING_CONFIRMATION,
+            ReviewRun.pending_comment_posted.is_(False),
+            ReviewRun.installation_id.is_not(None),
+        )
+    ).all()
+    return [(r.id, r.repo, r.pr_number, int(r.installation_id or 0), r.held_count) for r in rows]
 
 
 def expire_run(session: Session, run_id: str) -> bool:

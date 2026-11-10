@@ -83,6 +83,8 @@ class ReviewRun(Base):
         Boolean, default=False, server_default=false()
     )
     # Set when the PR closed while this run was held: its checkpoint (it holds source code) must go.
+    # How many findings are held. Kept so the 'pending' comment can be re-sent after a failed POST.
+    held_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     purge_checkpoint: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     confirmed_by: Mapped[str | None] = mapped_column(String, nullable=True)  # GitHub login
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
