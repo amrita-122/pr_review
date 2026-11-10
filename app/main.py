@@ -1,8 +1,10 @@
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -22,6 +24,8 @@ from app.jobs.payload import ConfirmJobPayload
 from app.jobs.queue import enqueue_confirm, enqueue_review
 from app.logging import configure_logging
 from app.observability import configure_tracing
+
+logger = structlog.get_logger()
 
 
 @asynccontextmanager
@@ -92,8 +96,17 @@ async def handle_webhook(
 
     # Delivery + run + job are committed together: a crash can never record a delivery whose
     # review job was lost. If this raises, nothing is saved and GitHub's redelivery works.
-    enqueue_review(session, pr_event, settings)
-    session.commit()
+    try:
+        enqueue_review(session, pr_event, settings)
+        session.commit()
+    except IntegrityError:
+        # Two deliveries for the same commit raced: both saw no run, the other one inserted it
+        # first (unique repo/PR/sha). The review is queued by the winner, so nothing is lost.
+        session.rollback()
+        logger.info("concurrent_delivery_for_same_commit", delivery_id=delivery_id)
+        record_delivery(session, delivery_id, event, pr_event.action)  # keep redeliveries no-ops
+        session.commit()
+        return {"status": "duplicate"}
     return {"status": "accepted"}
 
 

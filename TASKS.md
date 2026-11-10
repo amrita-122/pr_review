@@ -266,7 +266,7 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 - [x] 10.4 Drafts (audit): skip draft PRs; handle `ready_for_review` (add to the handled actions); setting to turn it off.
 - [x] 10.5 422 fallback (audit): when inline comments are dropped, say so in the summary (no "See the inline comments")
       and re-check `review_exists` before the retry.
-- [ ] 10.6 Concurrent duplicate delivery (audit): catch `IntegrityError` on the (repo, pr, sha) unique key; no 500.
+- [x] 10.6 Concurrent duplicate delivery (audit): catch `IntegrityError` on the (repo, pr, sha) unique key; no 500.
 - [ ] 10.7 Pending-comment loss (audit): the "held" flag is set before the POST; a failed POST means nobody is told.
       Set it only after the comment is posted (or reset it on failure).
 - [ ] 10.8 Hold only critical findings (audit; amends ADR 0007): non-critical findings are not withheld. Exact posting
