@@ -58,6 +58,8 @@ EXPIRED_COMMENT = (
 )
 
 
+DISMISSED_REPLY = "Marked as a false positive by a maintainer. This thread is resolved."
+DISMISSED_HOLD_COMMENT = "A maintainer dismissed the held findings. They were not posted."
 NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
 AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
 MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
@@ -542,6 +544,9 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         await _refuse(payload, token, NOT_ALLOWED_COMMENT)
         return "ignored"  # not an error: a retry would not change the answer
 
+    if payload.command == "dismiss":
+        return await _dismiss(payload, token, settings)
+
     # 2. Claim: awaiting_confirmation -> confirming, atomically. Losing is not a failure.
     if not _critical(
         lambda s: runs.claim_confirmation(
@@ -690,3 +695,53 @@ async def purge_closed_checkpoints(
                 _critical(lambda s, rid=run_id: runs.mark_checkpoint_purged(s, rid))  # type: ignore[misc]
                 purged += 1
     return purged
+
+
+async def _dismiss(payload: ConfirmJobPayload, token: str, settings: Settings) -> str:
+    """An allowed maintainer said /dismiss (permission already checked by the caller).
+
+    - In a finding's thread: that finding becomes a false positive. It is never repeated and never
+      called fixed; the thread gets one reply and is resolved. The comment is not deleted.
+    - On the PR as a whole: the held review is dropped instead of waiting to expire.
+    """
+    run_id = payload.run_id
+    if payload.target_comment_id is None:
+        if not _critical(lambda s: runs.dismiss_held(s, run_id)):
+            logger.info("dismiss_ignored", reason="not_held")
+            return "ignored"
+        logger.info("held_review_dismissed", by=payload.commenter_login)
+        async with open_checkpointer(settings) as saver:  # source code: gone with the review
+            if await delete_thread(saver, run_id):
+                _critical(lambda s: runs.mark_checkpoint_purged(s, run_id))
+        try:
+            if _critical(lambda s: runs.claim_dismissed_comment(s, run_id)):
+                await post_pr_comment(
+                    token, payload.owner, payload.repo, payload.number, DISMISSED_HOLD_COMMENT
+                )
+        except Exception as exc:
+            logger.warning("dismiss_comment_not_posted", error=type(exc).__name__)
+        return "dismissed"
+
+    found = _critical(
+        lambda s: runs.find_posted_finding_by_comment(
+            s, payload.repo_full_name, payload.number, payload.target_comment_id or 0
+        )
+    )
+    if found is None:
+        return "ignored"
+    finding_id, _ = found
+    if not _critical(lambda s: runs.dismiss_finding(s, finding_id, payload.commenter_login)):
+        return "ignored"  # already dismissed (a redelivery or a second maintainer)
+    logger.info("finding_dismissed", by=payload.commenter_login)
+    try:
+        await reply_to_review_comment(
+            token, payload.owner, payload.repo, payload.number, payload.target_comment_id,
+            DISMISSED_REPLY,
+        )  # fmt: skip
+        await resolve_review_thread(
+            token, payload.owner, payload.repo, payload.number, payload.target_comment_id
+        )
+    except Exception as exc:
+        # Keep the dismissal: the maintainer's decision stands even if our reply did not post.
+        logger.warning("dismiss_reply_failed", error=type(exc).__name__)
+    return "dismissed"
