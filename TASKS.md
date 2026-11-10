@@ -315,7 +315,7 @@ on the sandbox repo (late webhook, all files failing) and fixed.
 nothing in the PR, its checks or its comments names the vulnerability.
 
 ### Branch 4 — `feat/architecture-agent`
-- [ ] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
+- [x] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
 - [ ] 10.23 Context retrieval at the edge (not in `review_diff`): fetch related files through the Contents API (read-only;
       permission already held), under hard caps; `review_diff` receives them as data, so it stays pure.
 - [ ] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing

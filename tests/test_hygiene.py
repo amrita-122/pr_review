@@ -146,3 +146,14 @@ def test_old_deliveries_and_finished_jobs_are_pruned_but_live_work_is_not(
         "running",
     ]
     assert prune_old_rows(db_session, now, settings()) == (0, 0)
+
+
+# --- 10.22: architecture agent settings --------------------------------------------------------
+
+
+def test_the_architecture_agent_is_off_by_default_and_validated_when_on() -> None:
+    assert settings().architecture_agent_enabled is False
+    # while it is off, its prompt file need not exist yet
+    assert settings(architecture_prompt_version="nope_v9")
+    with pytest.raises(ValueError, match="ARCHITECTURE_MAX"):
+        settings(architecture_max_files=0)
