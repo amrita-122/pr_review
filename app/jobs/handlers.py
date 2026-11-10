@@ -20,6 +20,7 @@ from app.db import runs
 from app.db.session import get_session
 from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
+from app.github.advisories import create_draft_advisory
 from app.github.auth import get_installation_token, invalidate_installation_token
 from app.github.client import (
     ReviewComment,
@@ -48,6 +49,8 @@ from app.review.render import (
 )
 from app.review.schemas import Severity
 from app.review.triage import Triager
+from app.review.validate import Dropped
+from app.review.visibility import PRIVATE_DELIVERED, PRIVATE_FAILED
 
 logger = structlog.get_logger()
 
@@ -79,8 +82,13 @@ async def _refuse(payload: ConfirmJobPayload, token: str, text: str) -> None:
         logger.warning("refusal_reply_not_posted", error=type(exc).__name__)
 
 
-def pending_comment(held: int, severities: frozenset[Severity]) -> str:
-    """Static text. It carries a count and our own severity names, never anything from the PR."""
+def pending_comment(held: int, severities: frozenset[Severity], public: bool = False) -> str:
+    """Static text. It carries a count and our own severity names, never anything from the PR.
+    On a public repo it names neither (ADR 0008): "critical" is exactly what must not leak."""
+    if public:
+        return (
+            "Part of this review is pending. A maintainer with write access can reply `/confirm`."
+        )
     names = "/".join(sorted(s.value for s in severities))
     what = f"{held} {names} finding(s)" if held > 0 else f"{names.capitalize()} finding(s)"
     return (
@@ -202,7 +210,9 @@ async def _post_pending_comment(
     try:
         owner, _, repo = repo_full_name.partition("/")
         token = await get_installation_token(installation_id)
-        text = pending_comment(held, settings.held_severities)
+        run = _critical(lambda s: runs.get_run(s, run_id))
+        public = run is None or run.repo_private is not True  # unknown is public
+        text = pending_comment(held, settings.held_severities, public)
         await post_pr_comment(token, owner, repo, number, text)
     except Exception as exc:
         logger.warning("pending_comment_not_posted", error=type(exc).__name__)
@@ -325,16 +335,19 @@ async def _run(
             thread_id=run_id if saver is not None else None,
             pre_skipped=skipped,
             known=known,
+            public=payload.is_public,
         )
+        private_dropped = await _deliver_private(payload, token, outcome, settings)
+        dropped = outcome.dropped + private_dropped
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
             # review is NOT held (ADR 0007, amended): it goes out now, once.
             if outcome.findings:
                 _record(
                     "findings",
-                    lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped),
+                    lambda s: runs.save_findings(s, run_id, outcome.findings, dropped),
                 )
-                summary, comments = _render(outcome, held=outcome.pending)
+                summary, comments = _render(outcome, held=outcome.pending, public=payload.is_public)
                 if await _post_once(payload, token, summary, comments) == "superseded":
                     await delete_thread(saver, run_id)
                     return "superseded"
@@ -348,8 +361,8 @@ async def _run(
         # the last attempt the PR gets the short failure notice) instead of posting an empty review.
         raise JobFailure(MODEL, True, "every file failed review")
 
-    _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
-    summary, comments = _render(outcome)
+    _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, dropped))
+    summary, comments = _render(outcome, public=payload.is_public)
     result = await _post_once(payload, token, summary, comments)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
@@ -380,6 +393,7 @@ async def _close_fixed_findings(
         present = [
             *outcome.findings,
             *outcome.held,
+            *outcome.private,
             *(finding for finding, _ in outcome.dropped),
         ]
         sha = payload.head_sha
@@ -473,7 +487,9 @@ async def _post_once(
     return "posted"
 
 
-def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComment]]:
+def _render(
+    outcome: ReviewOutcome, held: int = 0, public: bool = False
+) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
     repeated = sum(reason == ALREADY_POSTED for _, reason in outcome.dropped)
@@ -487,6 +503,7 @@ def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComm
         failed=len(outcome.failed),
         held=held,
         repeated=repeated,
+        public=public,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
@@ -568,6 +585,8 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         head_sha=run.head_sha,
     )
 
+    public = run.repo_private is not True  # unknown is public: the safe side
+
     # 3. A retry after a post that succeeded: do not resume a finished thread.
     # Two shapes of held run: the rest of the review went out BEFORE the hold was recorded
     # (10.8: posted_at < awaiting_since), or nothing did and the whole review waits for /confirm.
@@ -612,13 +631,13 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         # already went out (10.8), only the confirmed findings are posted, as a follow-up review.
         if follow_up:
             confirmed = [f for f in outcome.findings if f.severity in settings.held_severities]
-            summary = render_confirmed_summary(confirmed)
+            summary = render_confirmed_summary(confirmed, public)
             comments = [
                 ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
                 for f in confirmed
             ]
         else:
-            summary, comments = _render(outcome)
+            summary, comments = _render(outcome, public=public)
         result = await _post_once(review, token, summary, comments, held=follow_up)
 
         # 7. Finish. _post_once already marked a superseded run.
@@ -745,3 +764,48 @@ async def _dismiss(payload: ConfirmJobPayload, token: str, settings: Settings) -
         # Keep the dismissal: the maintainer's decision stands even if our reply did not post.
         logger.warning("dismiss_reply_failed", error=type(exc).__name__)
     return "dismissed"
+
+
+async def _deliver_private(
+    payload: ReviewJobPayload, token: str, outcome: ReviewOutcome, settings: Settings
+) -> list[Dropped]:
+    """Public repo: send each diverted high/critical security finding to the private channel.
+
+    Returns them as (finding, reason) for the database: PRIVATE_DELIVERED, or PRIVATE_FAILED. FAIL
+    CLOSED: whatever goes wrong, nothing about the finding is written to the PR; it stays in the
+    database for the maintainer. Idempotent across job retries (already-delivered ones are skipped).
+    Only the count and the failure KIND are logged, never the finding.
+    """
+    if not outcome.private:
+        return []
+    run_id = payload.run_id
+    done = _critical(lambda s: runs.delivered_private(s, run_id))
+    results: list[Dropped] = []
+    delivered = 0
+    for finding in outcome.private:
+        key = (finding.file_path, finding.category.value, finding.line)
+        if key in done:
+            results.append((finding, PRIVATE_DELIVERED))
+            delivered += 1
+            continue
+        reason = PRIVATE_FAILED
+        if settings.private_channel == "none":
+            logger.warning("private_delivery_skipped", why="no private channel configured")
+        elif delivered >= settings.max_private_per_run:
+            logger.warning("private_delivery_skipped", why="over the per-review cap")
+        else:
+            try:
+                await create_draft_advisory(
+                    token, payload.owner, payload.repo, finding, payload.number, payload.head_sha
+                )
+                reason = PRIVATE_DELIVERED
+                delivered += 1
+            except Exception as exc:
+                _invalidate_on_401(exc, payload.installation_id)
+                status = (
+                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+                )
+                logger.warning("private_delivery_failed", error=type(exc).__name__, status=status)
+        results.append((finding, reason))
+    _record("private_count", lambda s: runs.set_private_count(s, run_id, len(results)))
+    return results
