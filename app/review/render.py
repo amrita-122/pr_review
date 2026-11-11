@@ -32,6 +32,7 @@ def render_summary(
     merged: int = 0,
     failed: int = 0,
     held: int = 0,
+    repeated: int = 0,
 ) -> str:
     """The review's top-level text. `overflow` = findings cut by the comment cap, `merged` =
     duplicates folded into another finding; both are stated so the list is never silently short.
@@ -46,14 +47,16 @@ def render_summary(
             lines.append(
                 "By category: " + ", ".join(f"{n} {cat}" for cat, n in categories.most_common())
             )
-    elif held and not failed and reviewed_count:
-        lines.append("No other findings.")
+    elif (held or repeated) and not failed and reviewed_count:
+        lines.append("No new findings.")
     elif reviewed_count == 0:
         lines.append("No files were reviewed, so there is nothing to report.")
     elif failed:
         lines.append("No findings in the files that were reviewed.")
     else:
         lines.append("No findings.")
+    if repeated:
+        lines.append(f"{repeated} finding(s) from an earlier push are still open and not repeated.")
     if held:
         lines.append(f"{held} more finding(s) are pending a maintainer's confirmation.")
     if failed:

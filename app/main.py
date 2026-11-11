@@ -16,8 +16,10 @@ from app.github.webhooks import (
     HANDLED_ACTIONS,
     HANDLED_EVENT,
     ISSUE_COMMENT_EVENT,
+    REVIEW_COMMENT_EVENT,
     parse_issue_comment_event,
     parse_pull_request_event,
+    parse_review_comment_event,
     verify_signature,
 )
 from app.jobs.payload import ConfirmJobPayload
@@ -85,6 +87,9 @@ async def handle_webhook(
     if event == ISSUE_COMMENT_EVENT:
         return _handle_issue_comment(session, body, delivery_id)
 
+    if event == REVIEW_COMMENT_EVENT:
+        return _handle_review_comment(session, body, delivery_id)
+
     if event != HANDLED_EVENT:
         return {"status": "ignored"}
 
@@ -143,7 +148,7 @@ def _handle_issue_comment(session: Session, body: bytes, delivery_id: str | None
     except ValidationError:
         raise HTTPException(status_code=422, detail="Invalid payload") from None
 
-    if not settings.confirmation_enabled or not comment_event.is_confirm_request:
+    if not settings.confirmation_enabled or not comment_event.is_command_request:
         return {"status": "ignored"}
     if delivery_id is None:
         raise HTTPException(status_code=400, detail="Missing X-GitHub-Delivery")
@@ -169,7 +174,58 @@ def _handle_issue_comment(session: Session, body: bytes, delivery_id: str | None
         comment_id=comment_event.comment.id,
         commenter_login=comment_event.login,
         author_login=comment_event.author_login,
+        command="dismiss" if comment_event.command == "dismiss" else "confirm",
     )
     enqueue_confirm(session, payload, settings)
     session.commit()  # delivery + job together, like a review
+    return {"status": "accepted"}
+
+
+def _handle_review_comment(
+    session: Session, body: bytes, delivery_id: str | None
+) -> dict[str, str]:
+    """A reply in one of OUR review threads that says /dismiss: the finding is a false positive.
+
+    Same rules as /confirm: the comment is untrusted, only "who" and "which comment" are taken
+    from it, the worker asks GitHub whether that person may, and anything that does not point at
+    one of our posted findings is ignored before any row is written.
+    """
+    settings = get_settings()
+    try:
+        event = parse_review_comment_event(body)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Invalid payload") from None
+    if not settings.feedback_enabled or not event.is_dismiss_request:
+        return {"status": "ignored"}
+    if delivery_id is None:
+        raise HTTPException(status_code=400, detail="Missing X-GitHub-Delivery")
+
+    repo = f"{event.owner}/{event.repo}"
+    target = event.comment.in_reply_to_id
+    if target is None:  # cannot happen after is_dismiss_request; keeps the types honest
+        return {"status": "ignored"}
+    found = runs.find_posted_finding_by_comment(session, repo, event.number, target)
+    if found is None:
+        return {"status": "ignored"}  # a reply to somebody else's comment
+    _, run_id = found
+    if runs.is_denied(session, run_id, event.login) or (
+        runs.denial_count(session, run_id) >= MAX_DENIED_LOGINS_PER_RUN
+    ):
+        return {"status": "ignored"}
+    if not record_delivery(session, delivery_id, REVIEW_COMMENT_EVENT, event.action):
+        return {"status": "duplicate"}
+    payload = ConfirmJobPayload(
+        run_id=run_id,
+        installation_id=event.installation_id,
+        owner=event.owner,
+        repo=event.repo,
+        number=event.number,
+        comment_id=event.comment.id,
+        commenter_login=event.login,
+        author_login=event.author_login,
+        command="dismiss",
+        target_comment_id=target,
+    )
+    enqueue_confirm(session, payload, settings)
+    session.commit()
     return {"status": "accepted"}

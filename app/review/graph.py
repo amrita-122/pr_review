@@ -13,6 +13,7 @@ from langgraph.types import Command, Send, interrupt
 from app.config import Settings
 from app.diff.parse import ParsedFile
 from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
+from app.review.dedupe import KnownFinding, drop_repeats
 from app.review.llm import Reviewer, reviewer_key
 from app.review.schemas import Agent, Finding, ReviewFinding, Severity
 from app.review.triage import Risk, Triager, rule_risk
@@ -179,9 +180,13 @@ def _review_file(
     return review_file
 
 
-def _validate(limits: ReviewLimits) -> Any:
+def _validate(limits: ReviewLimits, known: tuple[KnownFinding, ...] = ()) -> Any:
     def validate(state: ReviewState) -> dict[str, Any]:
         kept, dropped = partition_findings(state["findings"], state["to_review"])
+        # Before the comment cap and before the gate: a repeat must not use a slot or ask a
+        # maintainer to /confirm the same finding again.
+        kept, repeats = drop_repeats(kept, known)
+        dropped = dropped + repeats
         kept, merged = aggregate(kept, limits.max_comments)
         if any(reason == OVER_CAP for _, reason in merged):
             logger.warning(
@@ -217,12 +222,13 @@ def build_graph(
     *,
     hold_severities: frozenset[Severity] = frozenset(),
     checkpointer: Any = None,
+    known: tuple[KnownFinding, ...] = (),
 ) -> Any:
     graph = StateGraph(ReviewState)
     graph.add_node("prepare", _prepare(limits))
     graph.add_node("triage", _triage(triager))
     graph.add_node("review_file", _review_file(reviewers, limits))
-    graph.add_node("validate", _validate(limits))
+    graph.add_node("validate", _validate(limits, known))
     graph.add_edge(START, "prepare")
     graph.add_edge("prepare", "triage")
     agents = [
@@ -283,6 +289,7 @@ async def review_diff(
     checkpointer: Any = None,
     thread_id: str | None = None,
     pre_skipped: list[tuple[str, str]] | None = None,
+    known: tuple[KnownFinding, ...] = (),
 ) -> ReviewOutcome:
     """Review parsed files. Evals call this directly; it knows nothing about GitHub.
 
@@ -292,7 +299,12 @@ async def review_diff(
     """
     by_agent = {Agent.SECURITY.value: reviewers} if callable(reviewers) else dict(reviewers)
     app = build_graph(
-        by_agent, limits, triager, hold_severities=hold_severities, checkpointer=checkpointer
+        by_agent,
+        limits,
+        triager,
+        hold_severities=hold_severities,
+        checkpointer=checkpointer,
+        known=known,
     )
     initial: ReviewState = {
         "files": dict(files),

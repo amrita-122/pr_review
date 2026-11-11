@@ -70,9 +70,10 @@ def enqueue_confirm(session: Session, payload: ConfirmJobPayload, settings: Sett
     The payload's run_id is re-checked here against the database: the webhook never trusts the
     comment for anything but "who" and "which PR".
     """
-    run = runs.get_awaiting_for_pr(session, payload.repo_full_name, payload.number)
-    if run is None or run.id != payload.run_id:
-        return False
+    if payload.target_comment_id is None:  # confirm / dismiss of a HELD review
+        run = runs.get_awaiting_for_pr(session, payload.repo_full_name, payload.number)
+        if run is None or run.id != payload.run_id:
+            return False
     session.add(
         Job(
             kind=CONFIRM_REVIEW,

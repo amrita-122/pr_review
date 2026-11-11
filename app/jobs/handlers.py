@@ -28,6 +28,8 @@ from app.github.client import (
     list_pr_files,
     post_pr_comment,
     post_review,
+    reply_to_review_comment,
+    resolve_review_thread,
     review_exists,
 )
 from app.jobs.errors import MODEL, JobFailure, classify
@@ -35,6 +37,7 @@ from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
+from app.review.dedupe import ALREADY_POSTED, KnownFinding, is_repeat_of
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
 from app.review.render import (
@@ -55,6 +58,8 @@ EXPIRED_COMMENT = (
 )
 
 
+DISMISSED_REPLY = "Marked as a false positive by a maintainer. This thread is resolved."
+DISMISSED_HOLD_COMMENT = "A maintainer dismissed the held findings. They were not posted."
 NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
 AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
 MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
@@ -290,6 +295,13 @@ async def _run(
     if _critical(lambda s: runs.is_superseded(s, run_id)):  # don't pay for a stale review
         return "superseded"
 
+    # Findings already commented on this PR by earlier pushes are not posted again.
+    known = tuple(
+        KnownFinding(file=f, category=c, line=n)
+        for f, c, n in _critical(
+            lambda s: runs.list_known_findings(s, payload.repo_full_name, payload.number, run_id)
+        )
+    )
     async with _checkpointer_scope(settings) as saver:
         if saver is not None:
             await _drop_superseded_holds(saver, payload)
@@ -312,6 +324,7 @@ async def _run(
             checkpointer=saver,
             thread_id=run_id if saver is not None else None,
             pre_skipped=skipped,
+            known=known,
         )
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
@@ -340,7 +353,62 @@ async def _run(
     result = await _post_once(payload, token, summary, comments)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
+    if result == "posted":
+        await _close_fixed_findings(payload, token, outcome)
     return result
+
+
+FIXED_REPLY = "Fixed in `{sha}`. This thread is resolved; reopen it if the problem is still there."
+
+
+async def _close_fixed_findings(
+    payload: ReviewJobPayload, token: str, outcome: ReviewOutcome
+) -> None:
+    """Answer and resolve the threads of earlier findings this push no longer reproduces (10.16).
+
+    Conservative on purpose: a model that stays silent is weak evidence, so nothing is closed
+    unless this review was complete (no failed files) and covered the finding's file. Comments
+    are never deleted or edited. Best effort: a failure here never fails the review job.
+    """
+    if outcome.failed:
+        return
+    run_id = payload.run_id
+    try:
+        prior = _critical(
+            lambda s: runs.list_open_findings(s, payload.repo_full_name, payload.number, run_id)
+        )
+        present = [
+            *outcome.findings,
+            *outcome.held,
+            *(finding for finding, _ in outcome.dropped),
+        ]
+        sha = payload.head_sha
+        for finding_id, file, category, line, comment_id in prior:
+            if file not in outcome.reviewed:
+                continue  # skipped, over a limit, or not in this push: no evidence either way
+            if is_repeat_of(KnownFinding(file=file, category=category, line=line), present):
+                continue
+            if not _critical(lambda s, fid=finding_id: runs.claim_fixed(s, fid, sha[:12])):  # type: ignore[misc]
+                continue
+            if comment_id is None:
+                continue  # we never learned GitHub's id: recorded as fixed, nothing to answer
+            try:
+                await reply_to_review_comment(
+                    token,
+                    payload.owner,
+                    payload.repo,
+                    payload.number,
+                    comment_id,
+                    FIXED_REPLY.format(sha=sha[:7]),
+                )
+                await resolve_review_thread(
+                    token, payload.owner, payload.repo, payload.number, comment_id
+                )
+            except Exception as exc:
+                logger.warning("fixed_reply_failed", error=type(exc).__name__)
+                _critical(lambda s, fid=finding_id: runs.release_fixed(s, fid))  # type: ignore[misc]
+    except Exception as exc:  # the review itself is already posted
+        logger.warning("close_fixed_findings_failed", error=type(exc).__name__)
 
 
 async def _post_once(
@@ -377,7 +445,7 @@ async def _post_once(
     body = f"{summary}\n\n{marker}"
     args = (token, payload.owner, payload.repo, payload.number, payload.head_sha)
     try:
-        await post_review(*args, body, comments)
+        posted = await post_review(*args, body, comments)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 422 or not comments:
             raise
@@ -387,14 +455,28 @@ async def _post_once(
             _critical(lambda s: runs.mark_posted(s, run_id, held=held))
             return "already_posted"
         fallback = render_fallback_summary(summary, [(c.path, c.line, c.body) for c in comments])
-        await post_review(*args, f"{fallback}\n\n{marker}", [])
+        posted = await post_review(*args, f"{fallback}\n\n{marker}", [])
     _critical(lambda s: runs.mark_posted(s, run_id, held=held))
+    _record(
+        "github_ids",
+        lambda s: runs.save_github_ids(
+            s,
+            run_id,
+            review_id=posted.id,
+            comments=[
+                (c.path, c.placed_line, c.id, c.node_id)
+                for c in posted.comments
+                if c.placed_line is not None
+            ],
+        ),
+    )
     return "posted"
 
 
 def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
+    repeated = sum(reason == ALREADY_POSTED for _, reason in outcome.dropped)
     merged = sum(reason == MERGED for _, reason in outcome.dropped)
     summary = render_summary(
         len(outcome.reviewed),
@@ -404,6 +486,7 @@ def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComm
         merged=merged,
         failed=len(outcome.failed),
         held=held,
+        repeated=repeated,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
@@ -461,6 +544,9 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         await _refuse(payload, token, NOT_ALLOWED_COMMENT)
         return "ignored"  # not an error: a retry would not change the answer
 
+    if payload.command == "dismiss":
+        return await _dismiss(payload, token, settings)
+
     # 2. Claim: awaiting_confirmation -> confirming, atomically. Losing is not a failure.
     if not _critical(
         lambda s: runs.claim_confirmation(
@@ -508,8 +594,18 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         )
 
         # The held findings are only now final: record them (posted or not is set when posted).
+        # After a first review (10.8) only the held severities are replaced: the others keep
+        # their rows and GitHub ids.
+        held_names = frozenset(s.value for s in settings.held_severities)
         _record(
-            "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
+            "findings",
+            lambda s: runs.save_findings(
+                s,
+                run_id,
+                [f for f in outcome.findings if not follow_up or f.severity.value in held_names],
+                [] if follow_up else outcome.dropped,
+                replace_severities=held_names if follow_up else None,
+            ),
         )
 
         # 5. Render, 6. post once (re-checks head SHA and the marker). When the rest of the review
@@ -599,3 +695,53 @@ async def purge_closed_checkpoints(
                 _critical(lambda s, rid=run_id: runs.mark_checkpoint_purged(s, rid))  # type: ignore[misc]
                 purged += 1
     return purged
+
+
+async def _dismiss(payload: ConfirmJobPayload, token: str, settings: Settings) -> str:
+    """An allowed maintainer said /dismiss (permission already checked by the caller).
+
+    - In a finding's thread: that finding becomes a false positive. It is never repeated and never
+      called fixed; the thread gets one reply and is resolved. The comment is not deleted.
+    - On the PR as a whole: the held review is dropped instead of waiting to expire.
+    """
+    run_id = payload.run_id
+    if payload.target_comment_id is None:
+        if not _critical(lambda s: runs.dismiss_held(s, run_id)):
+            logger.info("dismiss_ignored", reason="not_held")
+            return "ignored"
+        logger.info("held_review_dismissed", by=payload.commenter_login)
+        async with open_checkpointer(settings) as saver:  # source code: gone with the review
+            if await delete_thread(saver, run_id):
+                _critical(lambda s: runs.mark_checkpoint_purged(s, run_id))
+        try:
+            if _critical(lambda s: runs.claim_dismissed_comment(s, run_id)):
+                await post_pr_comment(
+                    token, payload.owner, payload.repo, payload.number, DISMISSED_HOLD_COMMENT
+                )
+        except Exception as exc:
+            logger.warning("dismiss_comment_not_posted", error=type(exc).__name__)
+        return "dismissed"
+
+    found = _critical(
+        lambda s: runs.find_posted_finding_by_comment(
+            s, payload.repo_full_name, payload.number, payload.target_comment_id or 0
+        )
+    )
+    if found is None:
+        return "ignored"
+    finding_id, _ = found
+    if not _critical(lambda s: runs.dismiss_finding(s, finding_id, payload.commenter_login)):
+        return "ignored"  # already dismissed (a redelivery or a second maintainer)
+    logger.info("finding_dismissed", by=payload.commenter_login)
+    try:
+        await reply_to_review_comment(
+            token, payload.owner, payload.repo, payload.number, payload.target_comment_id,
+            DISMISSED_REPLY,
+        )  # fmt: skip
+        await resolve_review_thread(
+            token, payload.owner, payload.repo, payload.number, payload.target_comment_id
+        )
+    except Exception as exc:
+        # Keep the dismissal: the maintainer's decision stands even if our reply did not post.
+        logger.warning("dismiss_reply_failed", error=type(exc).__name__)
+    return "dismissed"

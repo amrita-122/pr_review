@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.github.webhooks import PullRequestEvent
@@ -43,6 +45,10 @@ class ConfirmJobPayload(BaseModel):
     comment_id: int
     commenter_login: str = Field(pattern=r"^[A-Za-z0-9-]{1,39}$")  # goes into a URL path
     author_login: str | None = None  # the PR's author: may not confirm their own review
+    command: Literal["confirm", "dismiss"] = "confirm"
+    # /dismiss as a reply in a finding's thread: the id of the finding's comment (None = the
+    # held review as a whole).
+    target_comment_id: int | None = None
 
     @property
     def repo_full_name(self) -> str:
