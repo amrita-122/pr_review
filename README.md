@@ -152,9 +152,17 @@ findings are not repeated on later pushes, and "Fixed in <sha>" replies resolve 
 false positives; on public repos high/critical security findings never appear on the PR (they go to a private
 channel, fail closed); an optional architecture agent reads related repo files.
 
-Numbers: the Phase 10 changes add about 200 unit tests (370 -> 570) (no real model calls). **No new eval numbers yet**: the
-architecture agent's golden/red-team measurement and the public-repo sandbox check are still to do (see TASKS.md
-10.18, 10.21, 10.25).
+Numbers: the Phase 10 changes add about 200 unit tests (370 -> 570) (no real model calls). The new migrations
+(up to `a9e37c2d5b61`) were applied on a real Postgres database. **No new eval numbers yet**: the architecture
+agent's golden/red-team measurement is not run (it costs money), so that agent stays off and is not in the eval gate
+(TASKS.md 10.25, 10.26).
+
+Private delivery, checked on a real public sandbox repo (2026-11-11, dummy content): the App's installation token
+can create a draft security advisory (HTTP 201) and the public cannot see it (404, empty list). Not yet checked: a
+signed-in read-only user's view, a repo with advisories disabled, and a private repo. Until then ADR 0008 stays
+Proposed and `PRIVATE_CHANNEL` defaults to `none`, so high/critical findings on public repos are kept in the
+database only. The bot can close an advisory but cannot delete it. The App needs the extra permission
+`repository_advisories: write` and the "Pull request review comment" event for `/dismiss`.
 
 ## Docs
 
