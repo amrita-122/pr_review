@@ -13,6 +13,7 @@ class ParsedFile:
     path: str
     commentable_lines: frozenset[int]  # new-file line numbers: added + context lines
     numbered: str  # what the reviewer reads: "L42 + code" / "L43   code"
+    removed_lines: frozenset[int] = frozenset()  # OLD-file numbers of deleted lines (LEFT side)
 
 
 def parse_patch(path: str, patch: str) -> ParsedFile:
@@ -29,6 +30,7 @@ def parse_patch(path: str, patch: str) -> ParsedFile:
         raise DiffParseError(str(exc)) from exc
 
     commentable: set[int] = set()
+    removed: set[int] = set()
     rendered: list[str] = []
     for patched_file in patch_set:
         for index, hunk in enumerate(patched_file):
@@ -43,7 +45,9 @@ def parse_patch(path: str, patch: str) -> ParsedFile:
                     commentable.add(line.target_line_no)
                     rendered.append(f"L{line.target_line_no}   {text}")
                 elif line.is_removed:
+                    if line.source_line_no is not None:
+                        removed.add(line.source_line_no)
                     rendered.append(f"     - {text}")  # no new-file number: not commentable
                 # "\ No newline at end of file" markers are dropped
 
-    return ParsedFile(path, frozenset(commentable), "\n".join(rendered))
+    return ParsedFile(path, frozenset(commentable), "\n".join(rendered), frozenset(removed))

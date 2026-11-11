@@ -25,7 +25,7 @@ def render_comment(finding: Finding) -> str:
     parts = [f"**[{finding.severity.value.upper()}] {finding.title}**", "", finding.rationale]
     if finding.suggestion:
         parts += ["", f"Suggestion: {finding.suggestion}"]
-    if finding.replacement_code is not None:
+    if finding.replacement_code is not None and finding.side == "RIGHT":  # not on deleted lines
         parts += ["", "```suggestion", finding.replacement_code.rstrip("\n"), "```"]
     return "\n".join(parts)
 

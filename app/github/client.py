@@ -86,7 +86,9 @@ class ReviewComment(BaseModel):
     path: str
     line: int
     body: str
-    side: str = "RIGHT"  # comment on the new version of the file
+    side: str = "RIGHT"  # RIGHT = new version of the file, LEFT = a deleted line (old numbers)
+    start_line: int | None = None  # set for a multi-line comment: it covers start_line..line
+    start_side: str | None = None
 
 
 class PostedComment(BaseModel):
@@ -130,7 +132,7 @@ async def post_review(
         "commit_id": commit_id,
         "event": "COMMENT",
         "body": body,
-        "comments": [c.model_dump() for c in comments],
+        "comments": [c.model_dump(exclude_none=True) for c in comments],
     }
     async with github_client(REVIEW_TIMEOUT) as client:
         response = await client.post(

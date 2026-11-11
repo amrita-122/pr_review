@@ -340,7 +340,9 @@ numbers justify turning it on.
 - [ ] 10.30 `/review` and `/explain` commands.
 - [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
 - [ ] 10.32 Secret-scanning pre-pass (regex + entropy) before the LLM; dependency/lockfile advisory check.
-- [ ] 10.33 Multi-line ranges and LEFT-side comments (deleted auth checks can't be flagged today).
+- [x] 10.33 Multi-line ranges and LEFT-side comments: `Finding.start_line`/`side`, deleted-line numbers in
+      `ParsedFile.removed_lines`, range validation (same side, in the diff, max 20 lines), GitHub payload.
+      Prompts NOT updated, so models never emit them yet (inert until a measured prompt bump).
 - [ ] 10.34 Per-PR and per-day cost budget; per-author rate limit; failure alerting; dashboard over runs/findings.
 - [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents.
 **Phase 10 done when:** branches 1-4 are merged, the README has the Phase 10 section with numbers, and docs/SECURITY.md

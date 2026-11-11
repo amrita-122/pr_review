@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Literal
 
 import structlog
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -56,10 +57,16 @@ def agent_for_category(category: Category) -> Agent:
 
 
 class Finding(BaseModel):
-    """One issue on one line of the NEW version of a file. Model output is untrusted."""
+    """One issue on a line (or a short range) of a file. Model output is untrusted.
+
+    By default it is the NEW version of the file. `side="LEFT"` means a deleted line, numbered in
+    the OLD file (e.g. a removed auth check). `start_line` makes it a range `start_line..line`.
+    """
 
     file_path: str
     line: int = Field(ge=1)
+    start_line: int | None = Field(default=None, ge=1)
+    side: Literal["RIGHT", "LEFT"] = "RIGHT"
     severity: Severity
     category: Category
     title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)

@@ -513,6 +513,19 @@ async def _post_once(
     return "posted"
 
 
+def to_review_comment(f: Finding) -> ReviewComment:
+    """A finding as GitHub's comment payload: a range only when start_line is set (and earlier)."""
+    ranged = f.start_line is not None and f.start_line < f.line
+    return ReviewComment(
+        path=f.file_path,
+        line=f.line,
+        body=render_comment(f),
+        side=f.side,
+        start_line=f.start_line if ranged else None,
+        start_side=f.side if ranged else None,
+    )
+
+
 def _render(
     outcome: ReviewOutcome,
     held: int = 0,
@@ -535,10 +548,7 @@ def _render(
         public=public,
         notes=notes,
     )
-    comments = [
-        ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
-        for f in outcome.findings
-    ]
+    comments = [to_review_comment(f) for f in outcome.findings]
     return summary, comments
 
 
@@ -662,10 +672,7 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         if follow_up:
             confirmed = [f for f in outcome.findings if f.severity in settings.held_severities]
             summary = render_confirmed_summary(confirmed, public)
-            comments = [
-                ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
-                for f in confirmed
-            ]
+            comments = [to_review_comment(f) for f in confirmed]
         else:
             summary, comments = _render(outcome, public=public)
         result = await _post_once(review, token, summary, comments, held=follow_up)
