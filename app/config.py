@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # Review only the files changed since the PR's last reviewed commit (10.31). Off by default:
     # a file that failed review earlier is not retried by a later incremental run.
     incremental_review_enabled: bool = False
+    # A neutral Check Run with annotations after a posted review (ADR 0010). Needs the App
+    # permission `checks: write`; without it the call fails, is logged and nothing else changes.
+    check_run_enabled: bool = False
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False

@@ -30,6 +30,34 @@ def render_comment(finding: Finding) -> str:
     return "\n".join(parts)
 
 
+MAX_ANNOTATIONS = 50  # GitHub accepts at most 50 annotations per request
+
+
+def render_check_output(findings: list[Finding], *, public: bool) -> dict[str, object]:
+    """The `output` of a Check Run (ADR 0010). It carries ONLY findings that are already posted
+    inline, with the text that already passed the policy, so it adds nothing new to a PR page.
+    Findings on deleted lines cannot be annotated (annotations address the new file)."""
+    annotations = [
+        {
+            "path": f.file_path,
+            "start_line": f.start_line
+            if f.start_line is not None and f.side == "RIGHT"
+            else f.line,
+            "end_line": f.line,
+            "annotation_level": "notice" if f.severity.value == "low" else "warning",
+            "title": f"[{f.severity.value.upper()}] {f.title}"[:255],
+            "message": f.rationale,
+        }
+        for f in findings
+        if f.side == "RIGHT"
+    ][:MAX_ANNOTATIONS]
+    if public:
+        summary = PUBLIC_CLOSING_LINE  # no counts, no "no findings": ADR 0008
+    else:
+        summary = f"{len(findings)} finding(s) posted inline." if findings else "No findings."
+    return {"title": "Review complete", "summary": summary, "annotations": annotations}
+
+
 def render_summary(
     reviewed_count: int,
     findings: list[Finding],

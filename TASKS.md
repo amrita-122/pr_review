@@ -335,7 +335,10 @@ numbers justify turning it on.
 - [x] 10.27 Suggested-change blocks: new optional `Finding.replacement_code` rendered as a ```suggestion block,
       policy-checked (no fence/link/invisible, size caps). Prompts NOT yet updated to ask for it, so it is inert
       until a prompt bump is measured. STILL TO DO BY HAND: see one render on a sandbox PR.
-- [ ] 10.28 Check Run with annotations and a neutral status (public repos: no vulnerability text, see ADR 0008).
+- [x] 10.28 Check Run with annotations, always `neutral`, annotating only what is already posted inline (ADR 0010,
+      status PROPOSED: you must approve it and grant `checks: write` on the sandbox App). `CHECK_RUN_ENABLED`, default
+      off; a 403 is logged and never fails the review. STILL TO DO BY HAND: one real Check Run on a public and a
+      private sandbox repo.
 - [x] 10.29 Per-repo `.review-bot.yml`, read from the BASE commit only (`pull_request.base.sha`). Can only tighten:
       agents subset, ignore globs, lower caps. Bad/oversized/anchored YAML = defaults. Adds `pyyaml` as a direct dep.
       Not done: a severity floor (needs care with held/private findings).
@@ -360,6 +363,9 @@ numbers justify turning it on.
       (also stores `findings.rationale` for /explain). NOT done: a per-PR cap (size caps already bound it),
       the dashboard (new UI surface). OPEN: architecture-agent token usage may be missing from `cost_usd`
       (not verified), so the day budget could undercount.
-- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents.
+- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents. NOT STARTED: needs real model runs
+      (cost) and prompt iteration with measurement. Ideas: a severity floor for quality findings, few-shot false-positive
+      examples from the dismissed findings, a second validation pass. Also bump the prompts to ask for
+      `replacement_code` / ranges only after that measurement (10.27, 10.33 are inert until then).
 **Phase 10 done when:** branches 1-4 are merged, the README has the Phase 10 section with numbers, and docs/SECURITY.md
 lists the new residual risks.

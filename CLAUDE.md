@@ -68,7 +68,8 @@ docs/                ARCHITECTURE.md · SECURITY.md · decisions/ · PROMPTS.md
   public page. On a PUBLIC repo (`repository.private == false`), high/critical security findings never appear
   in PR comments, review text, Check Runs or annotations. They go to a private channel (draft security
   advisory); the PR gets only a neutral "review complete" line. Anything the bot writes to a public PR is public.
-- Permissions: the App may add `repository_advisories: write` (draft advisories) per ADR 0008. It still never
+- Permissions: the App may add `repository_advisories: write` (draft advisories) per ADR 0008, and `checks: write`
+  (a neutral Check Run, off by default) per ADR 0010. It still never
   approves, requests changes, merges, or writes repository contents. Any other new permission needs an ADR.
 - Every finding passes the validator (file reviewed, line commentable, output policy)
   before posting. Dropped findings are logged with a reason.

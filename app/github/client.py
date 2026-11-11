@@ -82,6 +82,27 @@ async def list_pr_files(
     return files
 
 
+async def create_check_run(
+    token: str, owner: str, repo: str, head_sha: str, output: dict[str, object]
+) -> None:
+    """One completed Check Run, always `neutral` (ADR 0010: advisory, never blocks a merge).
+    Needs the App permission checks: write."""
+    async with github_client() as client:
+        response = await client.post(
+            f"/repos/{owner}/{repo}/check-runs",
+            json={
+                "name": CHECK_NAME,
+                "head_sha": head_sha,
+                "status": "completed",
+                "conclusion": "neutral",
+                "output": output,
+            },
+            headers=_headers(token),
+        )
+    response.raise_for_status()
+
+
+CHECK_NAME = "PR Review Bot"
 COMPARE_FILE_LIMIT = 300  # the compare API returns at most 300 files: more means "unknown"
 
 

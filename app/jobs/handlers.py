@@ -27,6 +27,7 @@ from app.github.auth import get_installation_token, invalidate_installation_toke
 from app.github.client import (
     ReviewComment,
     changed_files_between,
+    create_check_run,
     get_collaborator_permission,
     get_pr_head_sha,
     get_pr_refs,
@@ -57,6 +58,7 @@ from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_
 from app.review.llm import Reviewer, build_chat_model, build_review_setup, load_prompt
 from app.review.render import (
     render_architecture_notes,
+    render_check_output,
     render_comment,
     render_confirmed_summary,
     render_fallback_summary,
@@ -412,6 +414,8 @@ async def _run(
     _record("architecture", lambda s: runs.save_architecture_rows(s, run_id, arch_rows))
     summary, comments = _render(outcome, public=payload.is_public, notes=notes)
     result = await _post_once(payload, token, summary, comments)
+    if result == "posted" and settings.check_run_enabled:
+        await _post_check_run(payload, token, outcome)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
     if result == "posted":
@@ -572,6 +576,15 @@ def _render(
     )
     comments = [to_review_comment(f) for f in outcome.findings]
     return summary, comments
+
+
+async def _post_check_run(payload: ReviewJobPayload, token: str, outcome: ReviewOutcome) -> None:
+    """ADR 0010. Best effort: the review is already posted, so nothing here may fail the job."""
+    try:
+        output = render_check_output(outcome.findings, public=payload.is_public)
+        await create_check_run(token, payload.owner, payload.repo, payload.head_sha, output)
+    except Exception as exc:
+        logger.warning("check_run_not_created", error=type(exc).__name__)
 
 
 async def _incremental_scope(
