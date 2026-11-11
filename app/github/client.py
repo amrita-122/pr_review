@@ -251,6 +251,18 @@ async def get_pr_head_sha(token: str, owner: str, repo: str, number: int) -> str
     return str(response.json()["head"]["sha"])
 
 
+async def get_pr_refs(token: str, owner: str, repo: str, number: int) -> tuple[str, str | None]:
+    """(head sha, base sha) of the PR right now."""
+    async with github_client() as client:
+        response = await get_with_retry(
+            client, f"/repos/{owner}/{repo}/pulls/{number}", headers=_headers(token)
+        )
+    data = response.json()
+    base = data.get("base")
+    base_sha = base.get("sha") if isinstance(base, dict) else None
+    return str(data["head"]["sha"]), base_sha if isinstance(base_sha, str) else None
+
+
 async def review_exists(
     token: str, owner: str, repo: str, number: int, commit_id: str, marker: str
 ) -> bool:

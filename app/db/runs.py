@@ -7,6 +7,7 @@ Callers decide which writes are critical (let them raise) and which are bookkeep
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +24,7 @@ RUNNING = "running"
 OK = "ok"
 FAILED = "failed"
 SUPERSEDED = "superseded"
+RERUNNABLE = ("failed", "superseded", "skipped")  # what /review may bring back
 SKIPPED = "skipped"  # over the daily budget: nothing was reviewed or posted
 AWAITING_CONFIRMATION = "awaiting_confirmation"  # held for a maintainer's /confirm (Phase 8)
 CONFIRMING = "confirming"  # a /confirm was accepted; the held review is being posted
@@ -763,3 +765,43 @@ def count_author_runs_since(session: Session, author_login: str, since: datetime
         )
         or 0
     )
+
+
+# --- Phase 10.30: /review ------------------------------------------------------------------
+
+
+def latest_for_pr(session: Session, repo: str, pr_number: int) -> ReviewRun | None:
+    """The newest run of this PR, whatever its state."""
+    return session.scalars(
+        select(ReviewRun)
+        .where(ReviewRun.repo == repo, ReviewRun.pr_number == pr_number)
+        .order_by(ReviewRun.started_at.desc())
+    ).first()
+
+
+def create_skipped(session: Session, **kwargs: Any) -> None:
+    """A run that was refused before it started (rate limited): kept, so /review can revive it."""
+    create_queued(session, **kwargs)
+    session.flush()
+    run = session.get(ReviewRun, kwargs["run_id"])
+    if run is not None:
+        run.status = SKIPPED
+        run.finished_at = datetime.now(UTC)
+
+
+def requeue(session: Session, run_id: str) -> bool:
+    """failed / superseded / skipped -> queued, atomically. False if it was not in such a state
+    (two /review comments race: only one wins, so only one job is queued)."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status.in_(RERUNNABLE))
+        .values(
+            status=QUEUED,
+            error=None,
+            failure_reason=None,
+            finished_at=None,
+            failure_comment_posted=False,
+        )
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]

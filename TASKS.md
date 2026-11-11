@@ -339,7 +339,11 @@ numbers justify turning it on.
 - [x] 10.29 Per-repo `.review-bot.yml`, read from the BASE commit only (`pull_request.base.sha`). Can only tighten:
       agents subset, ignore globs, lower caps. Bad/oversized/anchored YAML = defaults. Adds `pyyaml` as a direct dep.
       Not done: a severity floor (needs care with held/private findings).
-- [ ] 10.30 `/review` and `/explain` commands.
+- [x] 10.30 (part) `/review`: a maintainer (write/admin, never the PR author) re-runs a failed, superseded or
+      rate-limited review of the PR's CURRENT head. A rate-limited push now leaves a `skipped` run so /review can
+      revive it. `REVIEW_COMMAND_ENABLED` (default true). NOT done: `/explain`. The comment already carries the
+      rationale (now also stored in `findings.rationale`), so it needs a product decision first: an LLM
+      explanation is a new prompt/injection surface and needs an ADR.
 - [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
 - [x] 10.32 (part) Secret-scanning pre-pass: `app/review/secrets_scan.py` (known key formats + entropy on added
       lines; the finding never contains the value). `SECRET_SCAN_ENABLED`, default OFF until its false-alarm

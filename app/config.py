@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     max_runs_per_author_per_hour: int = Field(default=0, ge=0)  # reviews queued per PR author
     # A Slack-style incoming webhook told when a review job fails for good. A secret.
     alert_webhook_url: SecretStr | None = None
+    review_command_enabled: bool = True  # /review re-runs a failed, skipped or rate-limited review
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False

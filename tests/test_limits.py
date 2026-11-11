@@ -83,7 +83,9 @@ def test_author_rate_limit_stops_the_second_push_in_the_hour(
     enqueue(first)
     enqueue(make_event(sha="b" * 40))
     assert len(db_session.scalars(select(Job)).all()) == 1
-    assert db_session.scalars(select(ReviewRun)).one().author_login == first.author_login
+    rows = db_session.scalars(select(ReviewRun)).all()  # the refused push leaves a skipped run
+    assert sorted(r.status for r in rows) == ["queued", "skipped"]
+    assert {r.author_login for r in rows} == {first.author_login}
 
 
 def test_rate_limit_off_by_default(db_session: Session, enqueue: Enqueue) -> None:

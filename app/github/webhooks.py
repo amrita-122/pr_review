@@ -12,6 +12,7 @@ HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize", "ready_for_rev
 CLOSED_ACTION = "closed"  # merged or not: either way the PR is finished
 CONFIRM_COMMAND = "/confirm"
 DISMISS_COMMAND = "/dismiss"
+REVIEW_COMMAND = "/review"  # re-run a review that failed, was skipped or was rate limited
 REVIEW_COMMENT_EVENT = "pull_request_review_comment"
 # A human GitHub login. It ends up in a URL path (/collaborators/{login}/permission).
 LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
@@ -251,6 +252,8 @@ def command_of(body: str) -> str | None:
         return "confirm"
     if text == DISMISS_COMMAND:
         return "dismiss"
+    if text == REVIEW_COMMAND:
+        return "review"
     return None
 
 

@@ -28,6 +28,7 @@ from app.github.client import (
     ReviewComment,
     get_collaborator_permission,
     get_pr_head_sha,
+    get_pr_refs,
     list_pr_files,
     post_pr_comment,
     post_review,
@@ -39,6 +40,7 @@ from app.github.context import fetch_context_files
 from app.github.repo_config import IGNORED_REASON, fetch_repo_config
 from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
+from app.jobs.queue import enqueue_rerun
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.architecture import (
     ArchitectureFinding,
@@ -78,6 +80,8 @@ DISMISSED_REPLY = "Marked as a false positive by a maintainer. This thread is re
 DISMISSED_HOLD_COMMENT = "A maintainer dismissed the held findings. They were not posted."
 NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
 AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
+REVIEW_AUTHOR_COMMENT = "The author of a pull request cannot re-run its review."
+REVIEW_NOT_ALLOWED_COMMENT = "Only a collaborator with write access can re-run a review."
 MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
 
 
@@ -611,6 +615,19 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
         raise
 
 
+async def _rerun(payload: ConfirmJobPayload, token: str, settings: Settings) -> str:
+    """/review from an allowed maintainer: queue the PR's failed, superseded or skipped review
+    again. Only when the run is still for the PR's CURRENT head (a newer push has its own run)."""
+    head, base = await get_pr_refs(token, payload.owner, payload.repo, payload.number)
+    run = _critical(lambda s: runs.get_run(s, payload.run_id))
+    if run is None or run.head_sha != head:
+        logger.info("review_command_ignored", reason="not_current_head")
+        return "ignored"
+    queued = _critical(lambda s: enqueue_rerun(s, run, payload, base, settings))
+    logger.info("review_command", queued=queued)
+    return "requeued" if queued else "ignored"
+
+
 async def _confirm(payload: ConfirmJobPayload) -> str:
     run_id = payload.run_id
     structlog.contextvars.bind_contextvars(run_id=run_id, pr_number=payload.number)
@@ -622,9 +639,8 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         payload.commenter_login.lower()
     ):
         logger.info("confirm_ignored", reason="author")
-        await _refuse(
-            payload, await get_installation_token(payload.installation_id), AUTHOR_COMMENT
-        )
+        text = REVIEW_AUTHOR_COMMENT if payload.command == "review" else AUTHOR_COMMENT
+        await _refuse(payload, await get_installation_token(payload.installation_id), text)
         return "ignored"
 
     # 1. Permission, asked of GitHub (the comment's own author_association is only a hint).
@@ -634,8 +650,12 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
     )
     if not is_allowed(permission):
         logger.info("confirm_ignored", reason="not_allowed")
-        await _refuse(payload, token, NOT_ALLOWED_COMMENT)
+        denied = REVIEW_NOT_ALLOWED_COMMENT if payload.command == "review" else NOT_ALLOWED_COMMENT
+        await _refuse(payload, token, denied)
         return "ignored"  # not an error: a retry would not change the answer
+
+    if payload.command == "review":
+        return await _rerun(payload, token, settings)
 
     if payload.command == "dismiss":
         return await _dismiss(payload, token, settings)
