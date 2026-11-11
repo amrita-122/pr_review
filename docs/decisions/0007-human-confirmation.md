@@ -38,6 +38,17 @@ before a maintainer has seen it, and LLM output goes out under the bot's name wi
 - Retries: the first review is posted BEFORE the hold is recorded (`posted_at < awaiting_since` tells the two
   shapes apart); a failed "pending" comment is re-sent by the worker's housekeeping (step 10.7).
 
+## Amendment 2 (2026-11-10, step 10.17): `/dismiss`
+- A maintainer can reply `/dismiss` to a finding's inline comment (event `pull_request_review_comment`): the finding
+  becomes a `false_positive`, is never posted again and never called "fixed"; the thread gets one reply and is
+  resolved. Same rules as `/confirm`: exact command, `created` only, non-Bot, collaborator with write/admin, never
+  the PR author, one short refusal per refused person.
+- `/dismiss` as a PR comment (event `issue_comment`) drops a HELD review at once (status `dismissed`, checkpoint
+  deleted) instead of waiting 72 h to expire.
+- The App must be subscribed to "Pull request review comment" (an event subscription, not a permission).
+  `FEEDBACK_ENABLED` (default true) turns the finding-level command off.
+- The dismissal rate of a run is `review_runs.dismissed_count` over its posted findings.
+
 ## Rejected
 - Split posting (non-critical now, critical later): two reviews per PR, breaks "ONE review".
 - Auto-post after N hours: fail-open, defeats the gate.

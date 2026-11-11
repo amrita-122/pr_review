@@ -287,38 +287,46 @@ repository visibility · LLM retrieval of repo context · responsible disclosure
 on the sandbox repo (late webhook, all files failing) and fixed.
 
 ### Branch 2 — `feat/self-correction`
-- [ ] 10.14 Store GitHub ids: migration adding review id, comment id and node id to `findings`; save them when posting.
+- [x] 10.14 Store GitHub ids: migration adding review id, comment id and node id to `findings`; save them when posting.
       No comment can be updated, resolved or deduped today (audit).
-- [ ] 10.15 Don't repeat yourself: on a new push, don't post a finding that is already posted (same file, category, nearby
+- [x] 10.15 Don't repeat yourself: on a new push, don't post a finding that is already posted (same file, category, nearby
       line, still present); only new findings are commented.
-- [ ] 10.16 Fix what is fixed: for a previously posted finding that no longer reproduces, reply "Fixed in <sha>" and resolve
+- [x] 10.16 Fix what is fixed: for a previously posted finding that no longer reproduces, reply "Fixed in <sha>" and resolve
       the thread (GraphQL `resolveReviewThread`). Never delete comments.
-- [ ] 10.17 Feedback: `/dismiss` (same permission rules as `/confirm`) marks a finding `false_positive`; a held review can
+- [x] 10.17 Feedback: `/dismiss` (same permission rules as `/confirm`) marks a finding `false_positive`; a held review can
       be dismissed instead of only expiring; the dismissal rate shows up in the run record.
 **Done when:** push a fix to a sandbox PR -> the old comment is answered and resolved and nothing is duplicated.
 
 ### Branch 3 — `feat/private-delivery`
-- [ ] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
+- [x] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
       permission (`repository_advisories: write`), that a draft is invisible to non-maintainers, and what happens on
       repos with advisories disabled. If it does not work, switch the ADR's channel to email and say why.
-- [ ] 10.19 Read `repository.private` from the webhook into the job payload / run record.
-- [ ] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
+      DONE 2026-11-11 (ADR 0008 now Accepted): installation token creates a draft (201); public gets 404; a write-access
+      collaborator sees nothing, only the admin does (true read-only untestable on a personal repo, inferred); private repo
+      returns 404 for the endpoint; turning off private vulnerability reporting does not block drafts (no "disabled" switch).
+- [x] 10.19 Read `repository.private` from the webhook into the job payload / run record.
+- [x] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
       "review complete" line at the end (no category, severity, file or line). Medium, low and non-security findings stay
       inline. Private repos behave as before. Applies to the `/confirm` pending comment too (it must not say "critical").
-- [ ] 10.21 Tests for both modes; red-team case: a finding's title or rationale must never appear in public PR text on a
+- [x] 10.21 Tests for both modes; red-team case: a finding's title or rationale must never appear in public PR text on a
       public repo. Sandbox check with a public repo and a private one.
+      Tests done (19). STILL TO DO BY HAND: the sandbox check with one public and one private repo (and the
+      App permission `repository_advisories: write`, see ADR 0008); until then PRIVATE_CHANNEL stays `none`.
 **Done when:** on a public sandbox repo a planted SQL injection produces a draft advisory and a neutral PR note, and
 nothing in the PR, its checks or its comments names the vulnerability.
 
 ### Branch 4 — `feat/architecture-agent`
-- [ ] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
-- [ ] 10.23 Context retrieval at the edge (not in `review_diff`): fetch related files through the Contents API (read-only;
+- [x] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
+- [x] 10.23 Context retrieval at the edge (not in `review_diff`): fetch related files through the Contents API (read-only;
       permission already held), under hard caps; `review_diff` receives them as data, so it stays pure.
-- [ ] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
+- [x] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
       validation layers. Repo files get the same randomized delimiters and output policy as the diff. Findings have no line:
       they go to the summary (private repo) or the private channel (public repo, high/critical).
-- [ ] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
+- [x] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
       measure precision/recall and cost; record results in README and SECURITY.md.
+      MEASURED 2026-11-11 (one run, 15 cases): recall 6/6, false alarms 0/4, hijacked 0/4, hijack posted 0/4, real flaw
+      suppressed 1/5. Recorded in README and SECURITY.md. NOT DONE: the runner does not save tokens/cost, so cost per PR
+      is unknown (add cost to the report, then rerun, before claiming a cost number).
 - [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
 **Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
 numbers justify turning it on.

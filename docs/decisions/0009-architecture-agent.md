@@ -1,6 +1,6 @@
 # ADR 0009 — Architecture agent (context beyond the diff)
 
-Status: Proposed (Accepted when 10.22 starts) · Date: 2026-11-10
+Status: Accepted 2026-11-10 (step 10.22; details below) - Date: 2026-11-10
 
 ## Context
 The security and quality agents only see one file's diff. Some weaknesses live in the design: missing authorization
@@ -23,6 +23,24 @@ understand the code and look for these.
   high/critical, ADR 0008). They never use inline comments.
 - New agent `architecture`, prompt `architecture_v1.md`, setting `ARCHITECTURE_AGENT_ENABLED` (default false).
 - Enabled by default only after golden and red-team numbers justify it (precision/recall and cost per PR in README).
+
+## Details decided in 10.22-10.24
+- One model call per PR (not per file). Its input is ONE untrusted block: the changed files' numbered diffs
+  (capped) plus the related repo files (capped), under the same random per-call markers as the other agents.
+- Related files = what the changed Python files import, plus fixed names (settings, config, auth, routes, ...).
+  Candidate paths come from untrusted diffs, so they are validated (safe characters only, no `..`) before they
+  go into a URL, and every fetch is `GET /repos/{owner}/{repo}/contents/{path}?ref=<head sha>` (read-only).
+- Caps (settings): 8 files, 8,000 characters each, 40,000 in total; a 404, a directory, a binary or an oversized
+  file is skipped silently. Retrieval never fails the review.
+- A finding is `ArchitectureFinding`: severity, title, rationale, optional suggestion, up to 5 related files that
+  must be among the changed or fetched files. No line, so it never becomes an inline comment. It passes the same
+  output policy as every finding (it is mapped onto a `Finding` for the check).
+- Delivery: private repo -> a short "Architecture notes" section in the review summary. Public repo ->
+  high/critical go to the private channel (ADR 0008, fail closed), medium/low go to the summary.
+- Stored as `findings` rows with category `architecture`, line 0, `posted=false` (never inline); the same title is
+  not repeated on a later push of the same PR.
+- Off by default (`ARCHITECTURE_AGENT_ENABLED=false`). It turns on by default only after the golden and red-team
+  numbers (`evals/architecture/`) are measured and recorded: until then it is an opt-in experiment.
 
 ## Consequences
 + Finds issues no single diff shows.

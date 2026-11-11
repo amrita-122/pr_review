@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.github.webhooks import PullRequestEvent
@@ -15,10 +17,15 @@ class ReviewJobPayload(BaseModel):
     repo: str
     number: int
     head_sha: str
+    repo_private: bool | None = None  # None = unknown = treated as public (fail closed)
 
     @property
     def repo_full_name(self) -> str:
         return f"{self.owner}/{self.repo}"
+
+    @property
+    def is_public(self) -> bool:
+        return self.repo_private is not True
 
     @classmethod
     def from_event(cls, event: PullRequestEvent, run_id: str) -> "ReviewJobPayload":
@@ -29,6 +36,7 @@ class ReviewJobPayload(BaseModel):
             repo=event.repo,
             number=event.number,
             head_sha=event.head_sha,
+            repo_private=event.repo_private,
         )
 
 
@@ -43,6 +51,10 @@ class ConfirmJobPayload(BaseModel):
     comment_id: int
     commenter_login: str = Field(pattern=r"^[A-Za-z0-9-]{1,39}$")  # goes into a URL path
     author_login: str | None = None  # the PR's author: may not confirm their own review
+    command: Literal["confirm", "dismiss"] = "confirm"
+    # /dismiss as a reply in a finding's thread: the id of the finding's comment (None = the
+    # held review as a whole).
+    target_comment_id: int | None = None
 
     @property
     def repo_full_name(self) -> str:

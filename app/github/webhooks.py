@@ -11,6 +11,8 @@ ISSUE_COMMENT_EVENT = "issue_comment"
 HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize", "ready_for_review"})
 CLOSED_ACTION = "closed"  # merged or not: either way the PR is finished
 CONFIRM_COMMAND = "/confirm"
+DISMISS_COMMAND = "/dismiss"
+REVIEW_COMMENT_EVENT = "pull_request_review_comment"
 # A human GitHub login. It ends up in a URL path (/collaborators/{login}/permission).
 LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
 
@@ -26,6 +28,9 @@ class Owner(BaseModel):
 class Repository(BaseModel):
     name: str
     owner: Owner
+    # None = the payload did not say. Everything that depends on visibility treats None as PUBLIC:
+    # the safe side for a tool that must not publish vulnerability details (ADR 0008).
+    private: bool | None = None
 
 
 class Head(BaseModel):
@@ -63,6 +68,10 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def repo_private(self) -> bool | None:
+        return self.repository.private
 
     @property
     def is_draft(self) -> bool:
@@ -127,20 +136,100 @@ class IssueCommentEvent(BaseModel):
         return self.issue.user.login if self.issue.user is not None else None
 
     @property
-    def is_confirm_request(self) -> bool:
-        """The ONE place that decides whether a comment may act as /confirm."""
+    def is_command_request(self) -> bool:
+        """The ONE place that decides whether a PR comment may act as a command (/confirm or
+        /dismiss). Which command it is: `command`."""
         return (
-            self.action == "created"  # never "edited": otherwise edit an old comment into /confirm
+            self.action == "created"  # never "edited": otherwise edit an old comment into a command
             and self.issue.pull_request is not None  # plain-issue comments arrive as the same event
             and self.comment.user.type != "Bot"  # includes our own app
             and LOGIN_PATTERN.fullmatch(self.comment.user.login) is not None  # goes in a URL path
-            and is_confirm_command(self.comment.body)
+            and command_of(self.comment.body) is not None
         )
+
+    @property
+    def command(self) -> str | None:
+        return command_of(self.comment.body)
+
+    @property
+    def is_confirm_request(self) -> bool:
+        return self.is_command_request and self.command == "confirm"
+
+
+class ReviewComment(BaseModel):
+    id: int
+    body: str
+    user: CommentUser
+    in_reply_to_id: int | None = None  # set when the comment is a reply in a review thread
+
+
+class ReviewPullRequest(BaseModel):
+    number: int
+    user: CommentUser | None = None  # the PR's author
+
+
+class PullRequestReviewCommentEvent(BaseModel):
+    """A comment on the diff. Only a reply to one of OUR comments saying /dismiss matters."""
+
+    action: str
+    comment: ReviewComment
+    pull_request: ReviewPullRequest
+    repository: Repository
+    installation: Installation
+
+    @property
+    def installation_id(self) -> int:
+        return self.installation.id
+
+    @property
+    def owner(self) -> str:
+        return self.repository.owner.login
+
+    @property
+    def repo(self) -> str:
+        return self.repository.name
+
+    @property
+    def number(self) -> int:
+        return self.pull_request.number
+
+    @property
+    def login(self) -> str:
+        return self.comment.user.login
+
+    @property
+    def author_login(self) -> str | None:
+        return self.pull_request.user.login if self.pull_request.user is not None else None
+
+    @property
+    def is_dismiss_request(self) -> bool:
+        return (
+            self.action == "created"  # never "edited"
+            and self.comment.in_reply_to_id is not None
+            and self.comment.user.type != "Bot"
+            and LOGIN_PATTERN.fullmatch(self.comment.user.login) is not None
+            and command_of(self.comment.body) == "dismiss"
+        )
+
+
+def parse_review_comment_event(body: bytes) -> PullRequestReviewCommentEvent:
+    return PullRequestReviewCommentEvent.model_validate_json(body)
 
 
 def parse_issue_comment_event(body: bytes) -> IssueCommentEvent:
     """Parse a verified webhook body. Raises pydantic.ValidationError if malformed."""
     return IssueCommentEvent.model_validate_json(body)
+
+
+def command_of(body: str) -> str | None:
+    """ "confirm" or "dismiss" for an exact command, else None. Exact match only: our own
+    comments mention the commands, so a substring test would let the bot command itself."""
+    text = body.strip()
+    if text == CONFIRM_COMMAND:
+        return "confirm"
+    if text == DISMISS_COMMAND:
+        return "dismiss"
+    return None
 
 
 def is_confirm_command(body: str) -> bool:

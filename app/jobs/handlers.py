@@ -17,9 +17,11 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import runs
+from app.db.runs import ARCH_NOTE
 from app.db.session import get_session
 from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
+from app.github.advisories import create_draft_advisory
 from app.github.auth import get_installation_token, invalidate_installation_token
 from app.github.client import (
     ReviewComment,
@@ -28,23 +30,37 @@ from app.github.client import (
     list_pr_files,
     post_pr_comment,
     post_review,
+    reply_to_review_comment,
+    resolve_review_thread,
     review_exists,
 )
+from app.github.context import fetch_context_files
 from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
+from app.review.architecture import (
+    ArchitectureFinding,
+    ArchitectureReviewer,
+    make_architecture_reviewer,
+    validate_architecture,
+)
 from app.review.checkpoint import delete_thread, open_checkpointer
+from app.review.context import candidate_paths
 from app.review.cost import cost_from_metadata
+from app.review.dedupe import ALREADY_POSTED, KnownFinding, is_repeat_of
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
-from app.review.llm import Reviewer, build_review_setup
+from app.review.llm import Reviewer, build_chat_model, build_review_setup, load_prompt
 from app.review.render import (
+    render_architecture_notes,
     render_comment,
     render_confirmed_summary,
     render_fallback_summary,
     render_summary,
 )
-from app.review.schemas import Severity
+from app.review.schemas import Finding, Severity
 from app.review.triage import Triager
+from app.review.validate import Dropped
+from app.review.visibility import PRIVATE_DELIVERED, PRIVATE_FAILED, PRIVATE_SEVERITIES
 
 logger = structlog.get_logger()
 
@@ -55,6 +71,8 @@ EXPIRED_COMMENT = (
 )
 
 
+DISMISSED_REPLY = "Marked as a false positive by a maintainer. This thread is resolved."
+DISMISSED_HOLD_COMMENT = "A maintainer dismissed the held findings. They were not posted."
 NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
 AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
 MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
@@ -74,8 +92,13 @@ async def _refuse(payload: ConfirmJobPayload, token: str, text: str) -> None:
         logger.warning("refusal_reply_not_posted", error=type(exc).__name__)
 
 
-def pending_comment(held: int, severities: frozenset[Severity]) -> str:
-    """Static text. It carries a count and our own severity names, never anything from the PR."""
+def pending_comment(held: int, severities: frozenset[Severity], public: bool = False) -> str:
+    """Static text. It carries a count and our own severity names, never anything from the PR.
+    On a public repo it names neither (ADR 0008): "critical" is exactly what must not leak."""
+    if public:
+        return (
+            "Part of this review is pending. A maintainer with write access can reply `/confirm`."
+        )
     names = "/".join(sorted(s.value for s in severities))
     what = f"{held} {names} finding(s)" if held > 0 else f"{names.capitalize()} finding(s)"
     return (
@@ -87,6 +110,18 @@ def pending_comment(held: int, severities: frozenset[Severity]) -> str:
 def build_reviewers() -> Mapping[str, Reviewer]:
     """The one place the job creates the real models. Tests replace this with a fake."""
     return build_review_setup(get_settings()).reviewers
+
+
+def build_architect() -> ArchitectureReviewer | None:
+    """The architecture agent's model, or None while it is off (the default)."""
+    settings = get_settings()
+    if not settings.architecture_agent_enabled:
+        return None
+    return make_architecture_reviewer(
+        build_chat_model(settings),
+        prompt=load_prompt(settings.architecture_prompt_version),
+        timeout_seconds=settings.model_timeout_seconds,
+    )
 
 
 def build_triager() -> Triager | None:
@@ -197,7 +232,9 @@ async def _post_pending_comment(
     try:
         owner, _, repo = repo_full_name.partition("/")
         token = await get_installation_token(installation_id)
-        text = pending_comment(held, settings.held_severities)
+        run = _critical(lambda s: runs.get_run(s, run_id))
+        public = run is None or run.repo_private is not True  # unknown is public
+        text = pending_comment(held, settings.held_severities, public)
         await post_pr_comment(token, owner, repo, number, text)
     except Exception as exc:
         logger.warning("pending_comment_not_posted", error=type(exc).__name__)
@@ -290,6 +327,13 @@ async def _run(
     if _critical(lambda s: runs.is_superseded(s, run_id)):  # don't pay for a stale review
         return "superseded"
 
+    # Findings already commented on this PR by earlier pushes are not posted again.
+    known = tuple(
+        KnownFinding(file=f, category=c, line=n)
+        for f, c, n in _critical(
+            lambda s: runs.list_known_findings(s, payload.repo_full_name, payload.number, run_id)
+        )
+    )
     async with _checkpointer_scope(settings) as saver:
         if saver is not None:
             await _drop_superseded_holds(saver, payload)
@@ -312,16 +356,23 @@ async def _run(
             checkpointer=saver,
             thread_id=run_id if saver is not None else None,
             pre_skipped=skipped,
+            known=known,
+            public=payload.is_public,
+        )
+        private_dropped = await _deliver_private(payload, token, outcome, settings)
+        dropped = outcome.dropped + private_dropped
+        notes, arch_rows = await _architecture_step(
+            payload, token, parsed_files, outcome, private_dropped, settings
         )
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
             # review is NOT held (ADR 0007, amended): it goes out now, once.
-            if outcome.findings:
-                _record(
-                    "findings",
-                    lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped),
+            _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, dropped))
+            _record("architecture", lambda s: runs.save_architecture_rows(s, run_id, arch_rows))
+            if outcome.findings or notes:
+                summary, comments = _render(
+                    outcome, held=outcome.pending, public=payload.is_public, notes=notes
                 )
-                summary, comments = _render(outcome, held=outcome.pending)
                 if await _post_once(payload, token, summary, comments) == "superseded":
                     await delete_thread(saver, run_id)
                     return "superseded"
@@ -335,12 +386,69 @@ async def _run(
         # the last attempt the PR gets the short failure notice) instead of posting an empty review.
         raise JobFailure(MODEL, True, "every file failed review")
 
-    _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
-    summary, comments = _render(outcome)
+    _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, dropped))
+    _record("architecture", lambda s: runs.save_architecture_rows(s, run_id, arch_rows))
+    summary, comments = _render(outcome, public=payload.is_public, notes=notes)
     result = await _post_once(payload, token, summary, comments)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
+    if result == "posted":
+        await _close_fixed_findings(payload, token, outcome)
     return result
+
+
+FIXED_REPLY = "Fixed in `{sha}`. This thread is resolved; reopen it if the problem is still there."
+
+
+async def _close_fixed_findings(
+    payload: ReviewJobPayload, token: str, outcome: ReviewOutcome
+) -> None:
+    """Answer and resolve the threads of earlier findings this push no longer reproduces (10.16).
+
+    Conservative on purpose: a model that stays silent is weak evidence, so nothing is closed
+    unless this review was complete (no failed files) and covered the finding's file. Comments
+    are never deleted or edited. Best effort: a failure here never fails the review job.
+    """
+    if outcome.failed:
+        return
+    run_id = payload.run_id
+    try:
+        prior = _critical(
+            lambda s: runs.list_open_findings(s, payload.repo_full_name, payload.number, run_id)
+        )
+        present = [
+            *outcome.findings,
+            *outcome.held,
+            *outcome.private,
+            *(finding for finding, _ in outcome.dropped),
+        ]
+        sha = payload.head_sha
+        for finding_id, file, category, line, comment_id in prior:
+            if file not in outcome.reviewed:
+                continue  # skipped, over a limit, or not in this push: no evidence either way
+            if is_repeat_of(KnownFinding(file=file, category=category, line=line), present):
+                continue
+            if not _critical(lambda s, fid=finding_id: runs.claim_fixed(s, fid, sha[:12])):  # type: ignore[misc]
+                continue
+            if comment_id is None:
+                continue  # we never learned GitHub's id: recorded as fixed, nothing to answer
+            try:
+                await reply_to_review_comment(
+                    token,
+                    payload.owner,
+                    payload.repo,
+                    payload.number,
+                    comment_id,
+                    FIXED_REPLY.format(sha=sha[:7]),
+                )
+                await resolve_review_thread(
+                    token, payload.owner, payload.repo, payload.number, comment_id
+                )
+            except Exception as exc:
+                logger.warning("fixed_reply_failed", error=type(exc).__name__)
+                _critical(lambda s, fid=finding_id: runs.release_fixed(s, fid))  # type: ignore[misc]
+    except Exception as exc:  # the review itself is already posted
+        logger.warning("close_fixed_findings_failed", error=type(exc).__name__)
 
 
 async def _post_once(
@@ -377,7 +485,7 @@ async def _post_once(
     body = f"{summary}\n\n{marker}"
     args = (token, payload.owner, payload.repo, payload.number, payload.head_sha)
     try:
-        await post_review(*args, body, comments)
+        posted = await post_review(*args, body, comments)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code != 422 or not comments:
             raise
@@ -387,14 +495,33 @@ async def _post_once(
             _critical(lambda s: runs.mark_posted(s, run_id, held=held))
             return "already_posted"
         fallback = render_fallback_summary(summary, [(c.path, c.line, c.body) for c in comments])
-        await post_review(*args, f"{fallback}\n\n{marker}", [])
+        posted = await post_review(*args, f"{fallback}\n\n{marker}", [])
     _critical(lambda s: runs.mark_posted(s, run_id, held=held))
+    _record(
+        "github_ids",
+        lambda s: runs.save_github_ids(
+            s,
+            run_id,
+            review_id=posted.id,
+            comments=[
+                (c.path, c.placed_line, c.id, c.node_id)
+                for c in posted.comments
+                if c.placed_line is not None
+            ],
+        ),
+    )
     return "posted"
 
 
-def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComment]]:
+def _render(
+    outcome: ReviewOutcome,
+    held: int = 0,
+    public: bool = False,
+    notes: list[str] | None = None,
+) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
+    repeated = sum(reason == ALREADY_POSTED for _, reason in outcome.dropped)
     merged = sum(reason == MERGED for _, reason in outcome.dropped)
     summary = render_summary(
         len(outcome.reviewed),
@@ -404,6 +531,9 @@ def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComm
         merged=merged,
         failed=len(outcome.failed),
         held=held,
+        repeated=repeated,
+        public=public,
+        notes=notes,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
@@ -461,6 +591,9 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         await _refuse(payload, token, NOT_ALLOWED_COMMENT)
         return "ignored"  # not an error: a retry would not change the answer
 
+    if payload.command == "dismiss":
+        return await _dismiss(payload, token, settings)
+
     # 2. Claim: awaiting_confirmation -> confirming, atomically. Losing is not a failure.
     if not _critical(
         lambda s: runs.claim_confirmation(
@@ -481,6 +614,8 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         number=payload.number,
         head_sha=run.head_sha,
     )
+
+    public = run.repo_private is not True  # unknown is public: the safe side
 
     # 3. A retry after a post that succeeded: do not resume a finished thread.
     # Two shapes of held run: the rest of the review went out BEFORE the hold was recorded
@@ -508,21 +643,31 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         )
 
         # The held findings are only now final: record them (posted or not is set when posted).
+        # After a first review (10.8) only the held severities are replaced: the others keep
+        # their rows and GitHub ids.
+        held_names = frozenset(s.value for s in settings.held_severities)
         _record(
-            "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
+            "findings",
+            lambda s: runs.save_findings(
+                s,
+                run_id,
+                [f for f in outcome.findings if not follow_up or f.severity.value in held_names],
+                [] if follow_up else outcome.dropped,
+                replace_severities=held_names if follow_up else None,
+            ),
         )
 
         # 5. Render, 6. post once (re-checks head SHA and the marker). When the rest of the review
         # already went out (10.8), only the confirmed findings are posted, as a follow-up review.
         if follow_up:
             confirmed = [f for f in outcome.findings if f.severity in settings.held_severities]
-            summary = render_confirmed_summary(confirmed)
+            summary = render_confirmed_summary(confirmed, public)
             comments = [
                 ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
                 for f in confirmed
             ]
         else:
-            summary, comments = _render(outcome)
+            summary, comments = _render(outcome, public=public)
         result = await _post_once(review, token, summary, comments, held=follow_up)
 
         # 7. Finish. _post_once already marked a superseded run.
@@ -599,3 +744,174 @@ async def purge_closed_checkpoints(
                 _critical(lambda s, rid=run_id: runs.mark_checkpoint_purged(s, rid))  # type: ignore[misc]
                 purged += 1
     return purged
+
+
+async def _dismiss(payload: ConfirmJobPayload, token: str, settings: Settings) -> str:
+    """An allowed maintainer said /dismiss (permission already checked by the caller).
+
+    - In a finding's thread: that finding becomes a false positive. It is never repeated and never
+      called fixed; the thread gets one reply and is resolved. The comment is not deleted.
+    - On the PR as a whole: the held review is dropped instead of waiting to expire.
+    """
+    run_id = payload.run_id
+    if payload.target_comment_id is None:
+        if not _critical(lambda s: runs.dismiss_held(s, run_id)):
+            logger.info("dismiss_ignored", reason="not_held")
+            return "ignored"
+        logger.info("held_review_dismissed", by=payload.commenter_login)
+        async with open_checkpointer(settings) as saver:  # source code: gone with the review
+            if await delete_thread(saver, run_id):
+                _critical(lambda s: runs.mark_checkpoint_purged(s, run_id))
+        try:
+            if _critical(lambda s: runs.claim_dismissed_comment(s, run_id)):
+                await post_pr_comment(
+                    token, payload.owner, payload.repo, payload.number, DISMISSED_HOLD_COMMENT
+                )
+        except Exception as exc:
+            logger.warning("dismiss_comment_not_posted", error=type(exc).__name__)
+        return "dismissed"
+
+    found = _critical(
+        lambda s: runs.find_posted_finding_by_comment(
+            s, payload.repo_full_name, payload.number, payload.target_comment_id or 0
+        )
+    )
+    if found is None:
+        return "ignored"
+    finding_id, _ = found
+    if not _critical(lambda s: runs.dismiss_finding(s, finding_id, payload.commenter_login)):
+        return "ignored"  # already dismissed (a redelivery or a second maintainer)
+    logger.info("finding_dismissed", by=payload.commenter_login)
+    try:
+        await reply_to_review_comment(
+            token, payload.owner, payload.repo, payload.number, payload.target_comment_id,
+            DISMISSED_REPLY,
+        )  # fmt: skip
+        await resolve_review_thread(
+            token, payload.owner, payload.repo, payload.number, payload.target_comment_id
+        )
+    except Exception as exc:
+        # Keep the dismissal: the maintainer's decision stands even if our reply did not post.
+        logger.warning("dismiss_reply_failed", error=type(exc).__name__)
+    return "dismissed"
+
+
+async def _try_private(
+    payload: ReviewJobPayload,
+    token: str,
+    finding: Finding,
+    settings: Settings,
+    delivered_so_far: int,
+    location: str | None = None,
+) -> str:
+    """Send ONE finding to the private channel. Returns PRIVATE_DELIVERED, or PRIVATE_FAILED for
+    every other outcome (fail closed: nothing about it is ever written to the PR)."""
+    if settings.private_channel == "none":
+        logger.warning("private_delivery_skipped", why="no private channel configured")
+        return PRIVATE_FAILED
+    if delivered_so_far >= settings.max_private_per_run:
+        logger.warning("private_delivery_skipped", why="over the per-review cap")
+        return PRIVATE_FAILED
+    try:
+        await create_draft_advisory(
+            token, payload.owner, payload.repo, finding, payload.number, payload.head_sha, location
+        )
+    except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        logger.warning("private_delivery_failed", error=type(exc).__name__, status=status)
+        return PRIVATE_FAILED
+    return PRIVATE_DELIVERED
+
+
+async def _deliver_private(
+    payload: ReviewJobPayload, token: str, outcome: ReviewOutcome, settings: Settings
+) -> list[Dropped]:
+    """Public repo: send each diverted high/critical security finding to the private channel.
+
+    Returns them as (finding, reason) for the database: PRIVATE_DELIVERED, or PRIVATE_FAILED. FAIL
+    CLOSED: whatever goes wrong, nothing about the finding is written to the PR; it stays in the
+    database for the maintainer. Idempotent across job retries (already-delivered ones are skipped).
+    Only the count and the failure KIND are logged, never the finding.
+    """
+    if not outcome.private:
+        return []
+    run_id = payload.run_id
+    done = _critical(lambda s: runs.delivered_private(s, run_id))
+    results: list[Dropped] = []
+    delivered = 0
+    for finding in outcome.private:
+        key = (finding.file_path, finding.category.value, finding.line)
+        if key in done:
+            results.append((finding, PRIVATE_DELIVERED))
+            delivered += 1
+            continue
+        reason = await _try_private(payload, token, finding, settings, delivered)
+        delivered += reason == PRIVATE_DELIVERED
+        results.append((finding, reason))
+    _record("private_count", lambda s: runs.set_private_count(s, run_id, len(results)))
+    return results
+
+
+async def _architecture_step(
+    payload: ReviewJobPayload,
+    token: str,
+    parsed_files: Mapping[str, ParsedFile],
+    outcome: ReviewOutcome,
+    private_dropped: list[Dropped],
+    settings: Settings,
+) -> tuple[list[str], list[tuple[str, str, str, str]]]:
+    """The architecture agent (ADR 0009). Returns (summary lines, rows for the database).
+
+    Off by default. Best effort by design: any failure (retrieval, model, parsing) is logged by
+    kind and yields no notes; it never fails or delays the review that is already worth posting.
+    Related files are read here, at the edge, and handed to the agent as plain data.
+    """
+    architect = build_architect()
+    if architect is None or not outcome.reviewed:
+        return [], []
+    try:
+        reviewed = {p: parsed_files[p] for p in outcome.reviewed if p in parsed_files}
+        context = await fetch_context_files(
+            token,
+            payload.owner,
+            payload.repo,
+            payload.head_sha,
+            candidate_paths(reviewed),
+            max_files=settings.architecture_max_files,
+            max_chars_per_file=settings.architecture_max_chars_per_file,
+            max_total_chars=settings.architecture_max_total_chars,
+        )
+        found = await architect(reviewed, context)
+    except Exception as exc:
+        logger.warning("architecture_step_failed", error=type(exc).__name__)
+        return [], []
+
+    run_id = payload.run_id
+    known_titles = _critical(
+        lambda s: runs.known_architecture_titles(s, payload.repo_full_name, payload.number, run_id)
+    )
+    checked = validate_architecture(
+        found,
+        known_paths=set(reviewed) | {f.path for f in context},
+        known_titles=known_titles,
+        max_findings=settings.architecture_max_findings,
+    )
+    summary_findings: list[ArchitectureFinding] = []
+    rows: list[tuple[str, str, str, str]] = []
+    delivered = sum(reason == PRIVATE_DELIVERED for _, reason in private_dropped)
+    for finding in checked.kept:
+        file = finding.files[0] if finding.files else "(repository)"
+        private = payload.is_public and finding.severity in PRIVATE_SEVERITIES
+        if not private:
+            summary_findings.append(finding)
+            rows.append((file, finding.severity.value, finding.title, ARCH_NOTE))
+            continue
+        # Public repo, high/critical: private channel only, fail closed (ADR 0008).
+        where = ", ".join(f"`{p}`" for p in finding.files) or "the repository as a whole"
+        reason = await _try_private(
+            payload, token, finding.policy_view(), settings, delivered, location=where
+        )
+        delivered += reason == PRIVATE_DELIVERED
+        rows.append((file, finding.severity.value, finding.title, reason))
+    return render_architecture_notes(summary_findings), rows

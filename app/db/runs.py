@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ConfirmDenial, FindingRow, ReviewRun
 from app.review.schemas import Finding
+from app.review.visibility import PRIVATE_DELIVERED
 
 MAX_ERROR_CHARS = 500
 
@@ -25,6 +26,7 @@ SUPERSEDED = "superseded"
 AWAITING_CONFIRMATION = "awaiting_confirmation"  # held for a maintainer's /confirm (Phase 8)
 CONFIRMING = "confirming"  # a /confirm was accepted; the held review is being posted
 EXPIRED = "expired"  # nobody confirmed in time; never posted
+DISMISSED = "dismissed"  # a maintainer dismissed the held review; never posted
 # A newer push replaces all of these. (A held or confirming run for an old commit must not post.)
 IN_FLIGHT = (QUEUED, RUNNING, AWAITING_CONFIRMATION, CONFIRMING)
 
@@ -53,6 +55,7 @@ def create_queued(
     prompt_version: str,
     model: str,
     head_updated_at: datetime | None = None,
+    repo_private: bool | None = None,
 ) -> None:
     """Add (not commit) a queued run: the caller commits it together with the job."""
     session.add(
@@ -62,6 +65,7 @@ def create_queued(
             pr_number=pr_number,
             head_sha=head_sha,
             head_updated_at=head_updated_at,
+            repo_private=repo_private,
             status=QUEUED,
             prompt_version=prompt_version,
             model=model,
@@ -221,8 +225,16 @@ def save_findings(
     run_id: str,
     posted: list[Finding],
     dropped: list[tuple[Finding, str]],
+    *,
+    replace_severities: frozenset[str] | None = None,
 ) -> None:
-    session.execute(delete(FindingRow).where(FindingRow.run_id == run_id))  # a retry replaces
+    """Record a run's findings; a retry replaces them. `replace_severities` limits what is
+    replaced: the follow-up review after /confirm saves only the held severities and must keep
+    the rows (and GitHub ids) of the findings that were posted in the first review."""
+    stale = delete(FindingRow).where(FindingRow.run_id == run_id)
+    if replace_severities is not None:
+        stale = stale.where(FindingRow.severity.in_(replace_severities))
+    session.execute(stale)
     rows = [(f, True, None) for f in posted] + [(f, False, reason) for f, reason in dropped]
     session.add_all(
         FindingRow(
@@ -460,3 +472,264 @@ def record_denial(session: Session, run_id: str, login: str) -> bool:
         session.rollback()
         return False
     return True
+
+
+def list_known_findings(
+    session: Session, repo: str, pr_number: int, exclude_run_id: str
+) -> list[tuple[str, str, int]]:
+    """(file, category, line) of every finding that is visible on this PR from OTHER runs:
+    posted, and not dismissed as a false positive."""
+    rows = session.execute(
+        select(FindingRow.file, FindingRow.category, FindingRow.line)
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != exclude_run_id,
+            FindingRow.fixed_in_sha.is_(None),  # a fixed one that comes back is a NEW finding
+            or_(
+                # a review that really went out
+                (ReviewRun.posted_at.is_not(None) & FindingRow.posted.is_(True)),
+                # or a finding already delivered to the private channel (do not send it twice)
+                FindingRow.drop_reason == PRIVATE_DELIVERED,
+            ),
+        )
+    ).all()
+    return [(r.file, r.category, r.line) for r in rows]
+
+
+def list_open_findings(
+    session: Session, repo: str, pr_number: int, exclude_run_id: str
+) -> list[tuple[int, str, str, int, int | None]]:
+    """Findings visible on this PR from other runs and not yet fixed:
+    (row id, file, category, line, GitHub comment id or None)."""
+    rows = session.execute(
+        select(
+            FindingRow.id,
+            FindingRow.file,
+            FindingRow.category,
+            FindingRow.line,
+            FindingRow.github_comment_id,
+        )
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != exclude_run_id,
+            ReviewRun.posted_at.is_not(None),
+            FindingRow.posted.is_(True),
+            FindingRow.fixed_in_sha.is_(None),
+            FindingRow.false_positive.is_(False),  # dismissed: nothing to say "fixed" about
+        )
+    ).all()
+    return [(r.id, r.file, r.category, r.line, r.github_comment_id) for r in rows]
+
+
+def claim_fixed(session: Session, finding_id: int, sha: str) -> bool:
+    """Mark a finding fixed, atomically. True for exactly ONE caller: the right to reply."""
+    result = session.execute(
+        update(FindingRow)
+        .where(FindingRow.id == finding_id, FindingRow.fixed_in_sha.is_(None))
+        .values(fixed_in_sha=sha)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def release_fixed(session: Session, finding_id: int) -> None:
+    """The reply failed: forget the claim so a later push tries again."""
+    session.execute(update(FindingRow).where(FindingRow.id == finding_id).values(fixed_in_sha=None))
+    session.commit()
+
+
+def save_github_ids(
+    session: Session,
+    run_id: str,
+    *,
+    review_id: int | None,
+    comments: list[tuple[str, int, int, str | None]],
+) -> None:
+    """Attach GitHub's ids to the posted findings of a run. `comments` = (path, line, comment_id,
+    node_id). A finding is matched by file and line; rows that already have an id are left alone.
+    Returns how many findings got a comment id."""
+    rows = list(
+        session.scalars(
+            select(FindingRow).where(
+                FindingRow.run_id == run_id,
+                FindingRow.posted.is_(True),
+                FindingRow.github_comment_id.is_(None),
+            )
+        ).all()
+    )
+    for path, line, comment_id, node_id in comments:
+        row = next((r for r in rows if r.file == path and r.line == line), None)
+        if row is None:
+            continue
+        rows.remove(row)
+        row.github_comment_id = comment_id
+        row.github_node_id = node_id
+        row.github_review_id = review_id
+    if review_id is not None:
+        for row in rows:  # posted in this review but not matched to a comment (summary fallback)
+            row.github_review_id = row.github_review_id or review_id
+    session.commit()
+
+
+# --- /dismiss ----------------------------------------------------------------------------------
+
+
+def dismiss_held(session: Session, run_id: str) -> bool:
+    """awaiting_confirmation -> dismissed, atomically (a confirm that won keeps its run)."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(status=DISMISSED, finished_at=datetime.now(UTC), purge_checkpoint=True)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def find_posted_finding_by_comment(
+    session: Session, repo: str, pr_number: int, comment_id: int
+) -> tuple[int, str] | None:
+    """(finding id, run id) of the finding whose GitHub comment this is, on this PR."""
+    row = session.execute(
+        select(FindingRow.id, FindingRow.run_id)
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            FindingRow.github_comment_id == comment_id,
+        )
+    ).first()
+    return None if row is None else (row.id, row.run_id)
+
+
+def dismiss_finding(session: Session, finding_id: int, login: str) -> bool:
+    """Mark a finding a false positive, atomically. True for exactly ONE caller; the run's
+    dismissed_count goes up with it."""
+    result = session.execute(
+        update(FindingRow)
+        .where(FindingRow.id == finding_id, FindingRow.false_positive.is_(False))
+        .values(false_positive=True, dismissed_by=login)
+    )
+    if not result.rowcount:  # type: ignore[attr-defined]
+        session.commit()
+        return False
+    run_id = session.scalar(select(FindingRow.run_id).where(FindingRow.id == finding_id))
+    session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id)
+        .values(dismissed_count=ReviewRun.dismissed_count + 1)
+    )
+    session.commit()
+    return True
+
+
+def undo_dismiss(session: Session, finding_id: int) -> None:
+    """The reply failed: take the dismissal back so the maintainer can try again."""
+    run_id = session.scalar(select(FindingRow.run_id).where(FindingRow.id == finding_id))
+    result = session.execute(
+        update(FindingRow)
+        .where(FindingRow.id == finding_id, FindingRow.false_positive.is_(True))
+        .values(false_positive=False, dismissed_by=None)
+    )
+    if result.rowcount:  # type: ignore[attr-defined]
+        session.execute(
+            update(ReviewRun)
+            .where(ReviewRun.id == run_id)
+            .values(dismissed_count=ReviewRun.dismissed_count - 1)
+        )
+    session.commit()
+
+
+def dismissal_rate(session: Session, run_id: str) -> float | None:
+    """Share of a run's posted findings that maintainers dismissed (None: nothing was posted)."""
+    posted = len(
+        list(
+            session.scalars(
+                select(FindingRow.id).where(
+                    FindingRow.run_id == run_id, FindingRow.posted.is_(True)
+                )
+            )
+        )
+    )
+    run = session.get(ReviewRun, run_id)
+    if not posted or run is None:
+        return None
+    return run.dismissed_count / posted
+
+
+def claim_dismissed_comment(session: Session, run_id: str) -> bool:
+    """True exactly once per dismissed run: the right to post the 'dismissed' comment."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(
+            ReviewRun.id == run_id,
+            ReviewRun.expired_comment_posted.is_(False),
+            ReviewRun.status == DISMISSED,
+        )
+        .values(expired_comment_posted=True)
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def delivered_private(session: Session, run_id: str) -> set[tuple[str, str, int]]:
+    """(file, category, line) of the findings of this run already sent to the private channel,
+    so a retried job does not create the same advisory twice."""
+    rows = session.execute(
+        select(FindingRow.file, FindingRow.category, FindingRow.line).where(
+            FindingRow.run_id == run_id, FindingRow.drop_reason == PRIVATE_DELIVERED
+        )
+    ).all()
+    return {(r.file, r.category, r.line) for r in rows}
+
+
+def set_private_count(session: Session, run_id: str, count: int) -> None:
+    run = session.get(ReviewRun, run_id)
+    if run is not None:
+        run.private_findings = count
+        session.commit()
+
+
+# --- architecture notes ------------------------------------------------------------------------
+
+ARCH_CATEGORY = "architecture"
+ARCH_NOTE = "architecture note (in the summary)"
+
+
+def save_architecture_rows(
+    session: Session, run_id: str, rows: list[tuple[str, str, str, str]]
+) -> None:
+    """(file, severity, title, reason) per architecture finding. They have no line (stored as 0)
+    and are never posted inline, so `posted` is False. A retry replaces this run's rows."""
+    session.execute(
+        delete(FindingRow).where(FindingRow.run_id == run_id, FindingRow.category == ARCH_CATEGORY)
+    )
+    session.add_all(
+        FindingRow(
+            run_id=run_id, file=file, line=0, severity=severity, category=ARCH_CATEGORY,
+            title=title, posted=False, drop_reason=reason,
+        )
+        for file, severity, title, reason in rows
+    )  # fmt: skip
+    session.commit()
+
+
+def known_architecture_titles(
+    session: Session, repo: str, pr_number: int, exclude_run_id: str
+) -> set[str]:
+    """Titles of architecture findings already reported on this PR (summary or private channel)."""
+    rows = session.scalars(
+        select(FindingRow.title)
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != exclude_run_id,
+            FindingRow.category == ARCH_CATEGORY,
+            FindingRow.drop_reason.in_((ARCH_NOTE, PRIVATE_DELIVERED)),
+        )
+    ).all()
+    return set(rows)

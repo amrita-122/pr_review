@@ -44,6 +44,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             prompt_version=settings.prompt_version,
             model=settings.model_review,
             head_updated_at=stamp,
+            repo_private=event.repo_private,
         )
     elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
         return False
@@ -55,6 +56,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
         existing.finished_at = None
         existing.failure_comment_posted = False
         existing.head_updated_at = stamp
+        existing.repo_private = event.repo_private
 
     payload = ReviewJobPayload.from_event(event, run_id)
     session.add(
@@ -70,9 +72,10 @@ def enqueue_confirm(session: Session, payload: ConfirmJobPayload, settings: Sett
     The payload's run_id is re-checked here against the database: the webhook never trusts the
     comment for anything but "who" and "which PR".
     """
-    run = runs.get_awaiting_for_pr(session, payload.repo_full_name, payload.number)
-    if run is None or run.id != payload.run_id:
-        return False
+    if payload.target_comment_id is None:  # confirm / dismiss of a HELD review
+        run = runs.get_awaiting_for_pr(session, payload.repo_full_name, payload.number)
+        if run is None or run.id != payload.run_id:
+            return False
     session.add(
         Job(
             kind=CONFIRM_REVIEW,

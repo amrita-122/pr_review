@@ -2,6 +2,7 @@ import re
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -56,6 +57,20 @@ class Settings(BaseSettings):
     quality_prompt_version: str = "quality_v2"
     # Which review agents run, comma separated: security, quality.
     enabled_agents: str = "security,quality"
+    # /dismiss in a finding's thread (needs the App subscribed to "Pull request review comment").
+    feedback_enabled: bool = True
+    # Public repos (ADR 0008): where high/critical security findings go instead of the PR.
+    # "none" = nowhere but the database (fail closed); "advisory" = a draft security advisory
+    # (needs the App permission "Repository security advisories: write").
+    private_channel: Literal["none", "advisory"] = "none"
+    max_private_per_run: int = 5  # advisories created per review; the rest stay in the database
+    # Architecture agent (ADR 0009): one extra call per PR that also sees related repo files.
+    architecture_agent_enabled: bool = False
+    architecture_prompt_version: str = "architecture_v1"
+    architecture_max_files: int = 8  # related files fetched through the Contents API
+    architecture_max_chars_per_file: int = 8_000
+    architecture_max_total_chars: int = 40_000  # all related files together
+    architecture_max_findings: int = 5
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False
@@ -122,9 +137,19 @@ class Settings(BaseSettings):
             versions["QUALITY_PROMPT_VERSION"] = self.quality_prompt_version
         if self.triage_enabled:
             versions["TRIAGE_PROMPT_VERSION"] = self.triage_prompt_version
+        if self.architecture_agent_enabled:
+            versions["ARCHITECTURE_PROMPT_VERSION"] = self.architecture_prompt_version
         for name, version in versions.items():
             if not _PROMPT_NAME.fullmatch(version) or not (_PROMPT_DIR / f"{version}.md").is_file():
                 raise ValueError(f"{name}={version!r} does not match a file in app/review/prompts")
+        caps = (
+            self.architecture_max_files,
+            self.architecture_max_chars_per_file,
+            self.architecture_max_total_chars,
+            self.architecture_max_findings,
+        )
+        if min(caps) < 1:
+            raise ValueError("the ARCHITECTURE_MAX_* caps must be at least 1")
         if self.confirm_ttl_hours <= 0:
             raise ValueError("CONFIRM_TTL_HOURS must be positive")
         return self

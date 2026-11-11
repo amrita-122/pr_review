@@ -13,10 +13,12 @@ from langgraph.types import Command, Send, interrupt
 from app.config import Settings
 from app.diff.parse import ParsedFile
 from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
+from app.review.dedupe import KnownFinding, drop_repeats
 from app.review.llm import Reviewer, reviewer_key
 from app.review.schemas import Agent, Finding, ReviewFinding, Severity
 from app.review.triage import Risk, Triager, rule_risk
 from app.review.validate import Dropped, partition_findings
+from app.review.visibility import divert
 
 logger = structlog.get_logger()
 
@@ -54,6 +56,7 @@ class ReviewOutcome:
     raw_count: int = 0  # findings the model produced, before validation
     pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post those
     held: list[Finding] = field(default_factory=list)  # the held findings themselves (in memory)
+    private: list[Finding] = field(default_factory=list)  # public repo: for the private channel
     risk: dict[str, str] = field(
         default_factory=dict
     )  # triage verdict per file (empty = no triage)
@@ -67,6 +70,7 @@ class ReviewState(TypedDict):
     findings: Annotated[list[Finding], operator.add]  # reducer: parallel branches append
     errors: Annotated[list[tuple[str, str]], operator.add]  # (path, reason) for failed files
     validated: list[Finding]
+    private: list[Finding]  # public repo: security findings that must never be PR text
     dropped: list[Dropped]
     pre_skipped: list[tuple[str, str]]  # files skipped before the graph ran (lockfiles, binaries)
 
@@ -179,9 +183,18 @@ def _review_file(
     return review_file
 
 
-def _validate(limits: ReviewLimits) -> Any:
+def _validate(
+    limits: ReviewLimits, known: tuple[KnownFinding, ...] = (), public: bool = False
+) -> Any:
     def validate(state: ReviewState) -> dict[str, Any]:
         kept, dropped = partition_findings(state["findings"], state["to_review"])
+        # Before the comment cap and before the gate: a repeat must not use a slot or ask a
+        # maintainer to /confirm the same finding again.
+        kept, repeats = drop_repeats(kept, known)
+        dropped = dropped + repeats
+        # Public repo: high/critical security findings leave the PR pipeline here, so they cannot
+        # use a comment slot, trigger a /confirm hold or reach any PR text (ADR 0008).
+        kept, private = divert(kept, public)
         kept, merged = aggregate(kept, limits.max_comments)
         if any(reason == OVER_CAP for _, reason in merged):
             logger.warning(
@@ -189,7 +202,7 @@ def _validate(limits: ReviewLimits) -> Any:
                 kept=len(kept),
                 dropped=sum(reason == OVER_CAP for _, reason in merged),
             )
-        return {"validated": kept, "dropped": dropped + merged}
+        return {"validated": kept, "private": private, "dropped": dropped + merged}
 
     return validate
 
@@ -217,12 +230,14 @@ def build_graph(
     *,
     hold_severities: frozenset[Severity] = frozenset(),
     checkpointer: Any = None,
+    known: tuple[KnownFinding, ...] = (),
+    public: bool = False,
 ) -> Any:
     graph = StateGraph(ReviewState)
     graph.add_node("prepare", _prepare(limits))
     graph.add_node("triage", _triage(triager))
     graph.add_node("review_file", _review_file(reviewers, limits))
-    graph.add_node("validate", _validate(limits))
+    graph.add_node("validate", _validate(limits, known, public))
     graph.add_edge(START, "prepare")
     graph.add_edge("prepare", "triage")
     agents = [
@@ -264,6 +279,7 @@ def _to_outcome(
         ),
         failed=sorted(failed),
         dropped=[(item, reason) for item, reason in values["dropped"]],
+        private=list(values.get("private", [])),
         raw_count=len(values["findings"]),
         risk=values["risk"],
         pending=pending,
@@ -283,6 +299,8 @@ async def review_diff(
     checkpointer: Any = None,
     thread_id: str | None = None,
     pre_skipped: list[tuple[str, str]] | None = None,
+    known: tuple[KnownFinding, ...] = (),
+    public: bool = False,
 ) -> ReviewOutcome:
     """Review parsed files. Evals call this directly; it knows nothing about GitHub.
 
@@ -292,7 +310,13 @@ async def review_diff(
     """
     by_agent = {Agent.SECURITY.value: reviewers} if callable(reviewers) else dict(reviewers)
     app = build_graph(
-        by_agent, limits, triager, hold_severities=hold_severities, checkpointer=checkpointer
+        by_agent,
+        limits,
+        triager,
+        hold_severities=hold_severities,
+        checkpointer=checkpointer,
+        known=known,
+        public=public,
     )
     initial: ReviewState = {
         "files": dict(files),
@@ -302,6 +326,7 @@ async def review_diff(
         "findings": [],
         "errors": [],
         "validated": [],
+        "private": [],
         "dropped": [],
         "pre_skipped": list(pre_skipped or []),
     }

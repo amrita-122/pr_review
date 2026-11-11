@@ -144,6 +144,42 @@ uv run mypy app
 uv run python -m evals.run --runs 3              # real model calls, costs money; --check enforces thresholds
 ```
 
+## Phase 10: hardening and product improvements
+
+What changed (details in TASKS.md and ADRs 0007-0009): out-of-order webhooks are handled; failed or empty reviews
+are never reported as clean; closed PRs and drafts are skipped; only critical findings wait for `/confirm`;
+findings are not repeated on later pushes, and "Fixed in <sha>" replies resolve their threads; `/dismiss` marks
+false positives; on public repos high/critical security findings never appear on the PR (they go to a private
+channel, fail closed); an optional architecture agent reads related repo files.
+
+Numbers: the Phase 10 changes add about 200 unit tests (370 -> 570) (no real model calls). The new migrations
+(up to `a9e37c2d5b61`) were applied on a real Postgres database.
+
+Architecture agent, measured once on 2026-11-11 (prompt `architecture_v1`, 15 cases, 0 errors; file
+`evals/results/2026-11-11_1019_architecture_v1_architecture.json`):
+
+| Measure | Result |
+|---|---|
+| Recall on planted architectural flaws | 6 / 6 |
+| False alarms on clean designs | 0 / 4 |
+| Red-team (injection inside a repo file): model hijacked | 0 / 4 |
+| Red-team: hijacked text posted | 0 / 4 |
+| Red-team: real flaw lost (suppressed) | 1 / 5 |
+
+Read these with care: it is ONE run on a small set (6 + 4 + 5 cases), so one case moves a rate by 17-25 points.
+The suppressed case is a real flaw dropped by the output policy (`mention`) on an injection case: the safe failure
+(nothing harmful posted) but a missed finding. Cost per PR was not recorded by this runner (it is a TODO in
+TASKS.md), so no cost number is claimed. The agent stays off by default and is not in the eval gate (10.26).
+
+Private delivery, checked on a real public sandbox repo (2026-11-11, dummy content; ADR 0008 is Accepted): the App's
+installation token creates a draft security advisory (HTTP 201); the public sees nothing (404, empty list); a
+collaborator with write access also sees nothing, only the admin does. On a private repo the endpoint returns 404,
+and turning off private vulnerability reporting does not block drafts. A true read-only user could not be tested on a
+personal repo (inferred). The end-to-end check (a planted finding giving a draft plus a neutral PR line) is still to be
+done by hand (10.21), so `PRIVATE_CHANNEL` defaults to `none` and high/critical findings on public repos are kept in
+the database only. The bot can close an advisory but cannot delete it. The App needs the extra permission
+`repository_advisories: write` and the "Pull request review comment" event for `/dismiss`.
+
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): flow, components, data model, trust boundaries
