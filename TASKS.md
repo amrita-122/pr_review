@@ -298,12 +298,12 @@ on the sandbox repo (late webhook, all files failing) and fixed.
 **Done when:** push a fix to a sandbox PR -> the old comment is answered and resolved and nothing is duplicated.
 
 ### Branch 3 — `feat/private-delivery`
-- [~] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
+- [x] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
       permission (`repository_advisories: write`), that a draft is invisible to non-maintainers, and what happens on
       repos with advisories disabled. If it does not work, switch the ADR's channel to email and say why.
-      PARTLY DONE: docs read and recorded in ADR 0008. Sandbox try on 2026-11-11: installation token CAN create a draft
-      (201) and the public cannot see it (404). STILL OPEN: draft as seen by a signed-in read-only user, and the error
-      when advisories are disabled.
+      DONE 2026-11-11 (ADR 0008 now Accepted): installation token creates a draft (201); public gets 404; a write-access
+      collaborator sees nothing, only the admin does (true read-only untestable on a personal repo, inferred); private repo
+      returns 404 for the endpoint; turning off private vulnerability reporting does not block drafts (no "disabled" switch).
 - [x] 10.19 Read `repository.private` from the webhook into the job payload / run record.
 - [x] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
       "review complete" line at the end (no category, severity, file or line). Medium, low and non-security findings stay
@@ -322,12 +322,11 @@ nothing in the PR, its checks or its comments names the vulnerability.
 - [x] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
       validation layers. Repo files get the same randomized delimiters and output policy as the diff. Findings have no line:
       they go to the summary (private repo) or the private channel (public repo, high/critical).
-- [~] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
+- [x] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
       measure precision/recall and cost; record results in README and SECURITY.md.
-      PARTLY DONE: 12 golden cases (6 planted flaws, 4 clean designs... see evals/architecture_cases.py), 5 red-team
-      cases (injection inside a repo file) and the runner `python -m evals.architecture_run --confirm-spend` exist and
-      their scoring is unit-tested. NOT DONE: the real measurement (it spends money, so it needs your go) and the README/
-      SECURITY.md numbers.
+      MEASURED 2026-11-11 (one run, 15 cases): recall 6/6, false alarms 0/4, hijacked 0/4, hijack posted 0/4, real flaw
+      suppressed 1/5. Recorded in README and SECURITY.md. NOT DONE: the runner does not save tokens/cost, so cost per PR
+      is unknown (add cost to the report, then rerun, before claiming a cost number).
 - [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
 **Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
 numbers justify turning it on.

@@ -1,6 +1,6 @@
 # ADR 0008 — Private delivery of security findings on public repos
 
-Status: Proposed (becomes Accepted when step 10.18 verifies the advisory API) · Date: 2026-11-10
+Status: Accepted (advisory API verified in step 10.18, 2026-11-11) · Date: 2026-11-10
 
 ## Context
 Anything the bot writes to a public PR is public: inline comments, the summary, Check Runs, annotations, even
@@ -69,8 +69,22 @@ Tried on a real public repo (`review-bot-sandbox`, App installation token, dummy
   a mistaken advisory needs a person to delete it in the Security tab.
 - A closed advisory does not show on the default "Draft" tab (it is under "Closed").
 
-Still NOT verified (so this ADR stays Proposed and `PRIVATE_CHANNEL` stays `none`): what a signed-in read-only
-user sees, and the error when advisories are disabled on the repo.
+Second sandbox round (2026-11-11, owner token, same repo):
+- Visibility of a draft: the owner (admin) sees it; a second account with WRITE access (`push`+`triage`, not admin)
+  sees nothing in the Security tab; a signed-out visitor gets 404. A true read-only role cannot be tested on a
+  personal repo (GitHub answers 422 "Cannot assign ... permission of read"; read-only collaborators need an
+  organization). Read is weaker than write, so a read-only user is expected to see nothing either; that part is
+  inferred, not observed. This resolves doc conflict 2 above in favour of the API pages (admins/security managers only).
+- Private repo: with the repo set to private, both `GET` and `POST .../security-advisories` returned 404 even for
+  the owner with admin rights and a `repo`-scope token; after making it public the same POST returned 201. So on a
+  private repo the endpoint is unavailable (404). This is fine: private repos do not use the channel (see Decision).
+- "Advisories disabled": there is no per-repo switch for repository advisories. Turning off private vulnerability
+  reporting (the only related setting) did NOT block creating drafts (still 201). So the only failure we have seen is
+  404 on a private repo; 403 (missing permission) and 422 (bad body) remain possible. The fail-closed rule below
+  already treats any non-2xx as "unavailable", which covers all of them.
+
+Verified, so this ADR is Accepted. `PRIVATE_CHANNEL` stays `none` by default until the end-to-end check below
+(a real planted finding on the public sandbox producing a draft and a neutral PR line) is done by hand (10.21).
 
 ## Fail-closed rule (implemented in 10.20)
 On a public repo a high/critical security finding is NEVER written to a PR, whatever the channel does:

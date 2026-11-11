@@ -231,8 +231,11 @@ What is still open, in rough order of importance:
    findings. The author of a PR cannot dismiss or confirm on their own PR; everyone else with write access can.
 6. **Architecture agent (off by default).** Related repo files are untrusted input read from the repo at the
    PR's head commit (a PR author controls them for their own PR). They sit inside the random-marker block and the
-   output goes through the same policy, but the red-team numbers for repo-file injection are NOT measured yet
-   (`python -m evals.architecture_run --confirm-spend`). Do not enable it for repos you do not trust before that.
+   output goes through the same policy. Measured once on 2026-11-11 (`python -m evals.architecture_run
+   --confirm-spend`, 5 injection cases hidden in repo files): the model was hijacked in 0 of 4 canary cases, hijacked
+   text was posted in 0 of 4, and 1 of 5 real flaws was lost to the output policy. That is a single run on a small
+   set, so it shows the defence works on these cases, not that it is proven. Still do not enable it for repos you do
+   not trust, and re-run after any prompt change.
 7. **Contents API reads are bounded, not private.** Up to 8 files / 40,000 characters of repository text are
    sent to the model provider per PR when the agent is on (same trust as the diff, but more of the repo).
 8. **Retention.** `webhook_deliveries` (30 days) and finished `jobs` (14 days) are pruned; `findings` and
