@@ -344,7 +344,9 @@ numbers justify turning it on.
       revive it. `REVIEW_COMMAND_ENABLED` (default true). NOT done: `/explain`. The comment already carries the
       rationale (now also stored in `findings.rationale`), so it needs a product decision first: an LLM
       explanation is a new prompt/injection surface and needs an ADR.
-- [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
+- [x] 10.31 Incremental review: `INCREMENTAL_REVIEW_ENABLED` (default off). Uses the PR's last OK+posted run and the
+      compare API; force-push, 300+ files or any error = full review. The summary says when it was incremental.
+      KNOWN GAP: a file whose review FAILED earlier is not retried by a later incremental run.
 - [x] 10.32 (part) Secret-scanning pre-pass: `app/review/secrets_scan.py` (known key formats + entropy on added
       lines; the finding never contains the value). `SECRET_SCAN_ENABLED`, default OFF until its false-alarm
       rate is measured. Public repos: HIGH hits go to the private channel (ADR 0008).

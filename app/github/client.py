@@ -82,6 +82,36 @@ async def list_pr_files(
     return files
 
 
+COMPARE_FILE_LIMIT = 300  # the compare API returns at most 300 files: more means "unknown"
+
+
+async def changed_files_between(
+    token: str, owner: str, repo: str, base: str, head: str
+) -> set[str] | None:
+    """Names of the files that differ between two commits of a PR, or None when that cannot be
+    said reliably (force-push so `base` is gone, 300+ files, any error). None means: review
+    everything. Never raises."""
+    try:
+        async with github_client() as client:
+            response = await get_with_retry(
+                client,
+                f"/repos/{owner}/{repo}/compare/{base}...{head}",
+                params={"per_page": COMPARE_FILE_LIMIT},
+                headers=_headers(token),
+                attempts=2,
+            )
+        data = response.json()
+        files = data.get("files")
+        if not isinstance(files, list) or len(files) >= COMPARE_FILE_LIMIT:
+            return None
+        if data.get("status") not in ("ahead", "identical"):
+            return None  # diverged or behind: a rebase or force-push rewrote the history
+        return {str(f["filename"]) for f in files if isinstance(f, dict) and "filename" in f}
+    except Exception as exc:
+        logger.warning("compare_failed", error=type(exc).__name__)
+        return None
+
+
 class ReviewComment(BaseModel):
     path: str
     line: int

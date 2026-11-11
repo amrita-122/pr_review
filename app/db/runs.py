@@ -805,3 +805,21 @@ def requeue(session: Session, run_id: str) -> bool:
     )
     session.commit()
     return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+# --- Phase 10.31: incremental review -------------------------------------------------------
+
+
+def last_reviewed_head(session: Session, repo: str, pr_number: int, run_id: str) -> str | None:
+    """The head sha of this PR's newest finished-and-posted run other than `run_id`."""
+    return session.scalars(
+        select(ReviewRun.head_sha)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != run_id,
+            ReviewRun.status == OK,
+            ReviewRun.posted_at.is_not(None),
+        )
+        .order_by(ReviewRun.started_at.desc())
+    ).first()

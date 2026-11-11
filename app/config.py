@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     # A Slack-style incoming webhook told when a review job fails for good. A secret.
     alert_webhook_url: SecretStr | None = None
     review_command_enabled: bool = True  # /review re-runs a failed, skipped or rate-limited review
+    # Review only the files changed since the PR's last reviewed commit (10.31). Off by default:
+    # a file that failed review earlier is not retried by a later incremental run.
+    incremental_review_enabled: bool = False
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False

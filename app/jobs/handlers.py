@@ -26,6 +26,7 @@ from app.github.advisories import create_draft_advisory
 from app.github.auth import get_installation_token, invalidate_installation_token
 from app.github.client import (
     ReviewComment,
+    changed_files_between,
     get_collaborator_permission,
     get_pr_head_sha,
     get_pr_refs,
@@ -347,6 +348,9 @@ async def _run(
             lambda s: runs.list_known_findings(s, payload.repo_full_name, payload.number, run_id)
         )
     )
+    review_files, incremental_note = await _incremental_scope(
+        payload, token, parsed_files, settings
+    )
     async with _checkpointer_scope(settings) as saver:
         if saver is not None:
             await _drop_superseded_holds(saver, payload)
@@ -355,7 +359,7 @@ async def _run(
             chosen = repo_config.choose_agents(list(all_reviewers))
             all_reviewers = {name: all_reviewers[name] for name in chosen}
         outcome = await review_diff(
-            parsed_files,
+            review_files,
             all_reviewers,
             repo_config.tighten(ReviewLimits.from_settings(settings)),
             triager=build_triager(),
@@ -381,6 +385,7 @@ async def _run(
         notes, arch_rows = await _architecture_step(
             payload, token, parsed_files, outcome, private_dropped, settings
         )
+        notes = [*notes, *incremental_note]
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
             # review is NOT held (ADR 0007, amended): it goes out now, once.
@@ -567,6 +572,34 @@ def _render(
     )
     comments = [to_review_comment(f) for f in outcome.findings]
     return summary, comments
+
+
+async def _incremental_scope(
+    payload: ReviewJobPayload,
+    token: str,
+    parsed_files: dict[str, ParsedFile],
+    settings: Settings,
+) -> tuple[dict[str, ParsedFile], list[str]]:
+    """10.31: the files to review, and a summary line saying so when that is fewer than all.
+
+    Only when enabled, and only when the PR's previous reviewed commit is known and GitHub can say
+    what changed since (`changed_files_between`). Anything uncertain reviews everything."""
+    if not settings.incremental_review_enabled:
+        return parsed_files, []
+    previous = _critical(
+        lambda s: runs.last_reviewed_head(s, payload.repo_full_name, payload.number, payload.run_id)
+    )
+    if previous is None or previous == payload.head_sha:
+        return parsed_files, []
+    changed = await changed_files_between(
+        token, payload.owner, payload.repo, previous, payload.head_sha
+    )
+    if changed is None:
+        return parsed_files, []
+    narrowed = {path: parsed for path, parsed in parsed_files.items() if path in changed}
+    logger.info("incremental_scope", total=len(parsed_files), reviewed=len(narrowed))
+    note = "Incremental review: only files changed since the last reviewed commit were examined."
+    return narrowed, [note]
 
 
 async def _over_daily_budget(payload: ReviewJobPayload, settings: Settings) -> bool:
