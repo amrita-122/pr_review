@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     architecture_max_chars_per_file: int = 8_000
     architecture_max_total_chars: int = 40_000  # all related files together
     architecture_max_findings: int = 5
+    # Deterministic secret scan of added lines before validation (10.32). Off until its false-alarm
+    # rate is measured on real diffs.
+    secret_scan_enabled: bool = False
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False

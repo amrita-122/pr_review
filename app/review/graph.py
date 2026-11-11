@@ -16,6 +16,7 @@ from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
 from app.review.dedupe import KnownFinding, drop_repeats
 from app.review.llm import Reviewer, reviewer_key
 from app.review.schemas import Agent, Finding, ReviewFinding, Severity
+from app.review.secrets_scan import scan_secrets
 from app.review.triage import Risk, Triager, rule_risk
 from app.review.validate import Dropped, partition_findings
 from app.review.visibility import divert
@@ -34,6 +35,7 @@ class ReviewLimits:
     max_total_chars: int = 150_000  # all reviewed diffs together
     max_findings_per_file: int = 10  # what we accept from one model call
     max_comments: int = 25  # inline comments in one review
+    secret_scan: bool = False  # deterministic pre-pass for committed secrets (10.32)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ReviewLimits":
@@ -43,6 +45,7 @@ class ReviewLimits:
             max_total_chars=settings.max_total_chars_per_pr,
             max_findings_per_file=settings.max_findings_per_file,
             max_comments=settings.max_comments_per_review,
+            secret_scan=settings.secret_scan_enabled,
         )
 
 
@@ -187,7 +190,8 @@ def _validate(
     limits: ReviewLimits, known: tuple[KnownFinding, ...] = (), public: bool = False
 ) -> Any:
     def validate(state: ReviewState) -> dict[str, Any]:
-        kept, dropped = partition_findings(state["findings"], state["to_review"])
+        scanned = scan_secrets(state["to_review"]) if limits.secret_scan else []
+        kept, dropped = partition_findings([*state["findings"], *scanned], state["to_review"])
         # Before the comment cap and before the gate: a repeat must not use a slot or ask a
         # maintainer to /confirm the same finding again.
         kept, repeats = drop_repeats(kept, known)

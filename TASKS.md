@@ -341,7 +341,11 @@ numbers justify turning it on.
       Not done: a severity floor (needs care with held/private findings).
 - [ ] 10.30 `/review` and `/explain` commands.
 - [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
-- [ ] 10.32 Secret-scanning pre-pass (regex + entropy) before the LLM; dependency/lockfile advisory check.
+- [x] 10.32 (part) Secret-scanning pre-pass: `app/review/secrets_scan.py` (known key formats + entropy on added
+      lines; the finding never contains the value). `SECRET_SCAN_ENABLED`, default OFF until its false-alarm
+      rate is measured. Public repos: HIGH hits go to the private channel (ADR 0008).
+- [ ] 10.32b Dependency/lockfile advisory check: DEFERRED. Needs an external vulnerability source (OSV) = a new
+      outbound service, so it needs an ADR first.
 - [x] 10.33 Multi-line ranges and LEFT-side comments: `Finding.start_line`/`side`, deleted-line numbers in
       `ParsedFile.removed_lines`, range validation (same side, in the diff, max 20 lines), GitHub payload.
       Prompts NOT updated, so models never emit them yet (inert until a measured prompt bump).
