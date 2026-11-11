@@ -18,6 +18,7 @@ class ReviewJobPayload(BaseModel):
     number: int
     head_sha: str
     repo_private: bool | None = None  # None = unknown = treated as public (fail closed)
+    base_sha: str | None = None  # the PR's base commit: .review-bot.yml is read from here only
 
     @property
     def repo_full_name(self) -> str:
@@ -37,6 +38,7 @@ class ReviewJobPayload(BaseModel):
             number=event.number,
             head_sha=event.head_sha,
             repo_private=event.repo_private,
+            base_sha=event.base_sha,
         )
 
 

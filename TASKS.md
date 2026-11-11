@@ -336,7 +336,9 @@ numbers justify turning it on.
       policy-checked (no fence/link/invisible, size caps). Prompts NOT yet updated to ask for it, so it is inert
       until a prompt bump is measured. STILL TO DO BY HAND: see one render on a sandbox PR.
 - [ ] 10.28 Check Run with annotations and a neutral status (public repos: no vulnerability text, see ADR 0008).
-- [ ] 10.29 Per-repo `.review-bot.yml`, read from the BASE branch only (a PR can change its own copy).
+- [x] 10.29 Per-repo `.review-bot.yml`, read from the BASE commit only (`pull_request.base.sha`). Can only tighten:
+      agents subset, ignore globs, lower caps. Bad/oversized/anchored YAML = defaults. Adds `pyyaml` as a direct dep.
+      Not done: a severity floor (needs care with held/private findings).
 - [ ] 10.30 `/review` and `/explain` commands.
 - [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
 - [ ] 10.32 Secret-scanning pre-pass (regex + entropy) before the LLM; dependency/lockfile advisory check.

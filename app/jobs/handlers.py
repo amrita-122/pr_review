@@ -35,6 +35,7 @@ from app.github.client import (
     review_exists,
 )
 from app.github.context import fetch_context_files
+from app.github.repo_config import IGNORED_REASON, fetch_repo_config
 from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
@@ -305,6 +306,7 @@ async def _run(
         return "superseded"
 
     token = await get_installation_token(payload.installation_id)
+    repo_config = await fetch_repo_config(token, payload.owner, payload.repo, payload.base_sha)
     files = await list_pr_files(
         token, payload.owner, payload.repo, payload.number, settings.max_listed_pages
     )
@@ -315,6 +317,8 @@ async def _run(
         skipped.append(("(more files)", "PR has more files than the listing limit"))
     for changed in files:
         reason = skip_reason(changed.filename, changed.status) or changed.skip_reason
+        if reason is None and repo_config.ignores(changed.filename):
+            reason = IGNORED_REASON
         if reason is None and changed.patch is not None:
             try:
                 parsed_files[changed.filename] = parse_patch(changed.filename, changed.patch)
@@ -337,10 +341,14 @@ async def _run(
     async with _checkpointer_scope(settings) as saver:
         if saver is not None:
             await _drop_superseded_holds(saver, payload)
+        all_reviewers = build_reviewers()
+        if isinstance(all_reviewers, Mapping):  # (tests may supply one bare reviewer)
+            chosen = repo_config.choose_agents(list(all_reviewers))
+            all_reviewers = {name: all_reviewers[name] for name in chosen}
         outcome = await review_diff(
             parsed_files,
-            build_reviewers(),
-            ReviewLimits.from_settings(settings),
+            all_reviewers,
+            repo_config.tighten(ReviewLimits.from_settings(settings)),
             triager=build_triager(),
             run_name=f"review {payload.repo_full_name}#{payload.number}",
             metadata={

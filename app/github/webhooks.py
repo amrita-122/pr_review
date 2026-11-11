@@ -37,8 +37,13 @@ class Head(BaseModel):
     sha: str
 
 
+class Base(BaseModel):
+    sha: str
+
+
 class PullRequest(BaseModel):
     head: Head
+    base: Base | None = None  # the commit the PR merges into: where trusted repo config is read
     # When GitHub last changed this PR. Used only to order out-of-order deliveries of pushes.
     updated_at: datetime | None = None
     draft: bool = False  # a draft is work in progress: reviewed only if REVIEW_DRAFTS is on
@@ -68,6 +73,11 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def base_sha(self) -> str | None:
+        base = self.pull_request.base
+        return base.sha if base is not None else None
 
     @property
     def repo_private(self) -> bool | None:
