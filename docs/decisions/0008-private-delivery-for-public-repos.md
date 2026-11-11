@@ -59,6 +59,19 @@ NOT confirmed (must be tried on a real public sandbox repo before this ADR is Ac
 Until 1-3 are checked the code treats the channel as unproven: it is behind `PRIVATE_CHANNEL` (default `none`) and
 FAILS CLOSED (see below). Nothing in the PR text changes if the channel is unavailable.
 
+## Sandbox result (step 10.18, 2026-11-11)
+
+Tried on a real public repo (`review-bot-sandbox`, App installation token, dummy content only):
+- The App permission `repository_advisories: write` was accepted on the installation.
+- `POST /repos/{owner}/{repo}/security-advisories` with the installation token returned 201 and state `draft`.
+- An anonymous caller got 404 for the draft by id and an empty list for the repo's advisories.
+- The owner could read it. The token could close it (PATCH state=closed, 200) but there is no API delete, so
+  a mistaken advisory needs a person to delete it in the Security tab.
+- A closed advisory does not show on the default "Draft" tab (it is under "Closed").
+
+Still NOT verified (so this ADR stays Proposed and `PRIVATE_CHANNEL` stays `none`): what a signed-in read-only
+user sees, and the error when advisories are disabled on the repo.
+
 ## Fail-closed rule (implemented in 10.20)
 On a public repo a high/critical security finding is NEVER written to a PR, whatever the channel does:
 - channel works: draft advisory created; the PR gets the neutral "review complete" line;

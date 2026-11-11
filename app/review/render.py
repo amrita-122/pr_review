@@ -1,8 +1,12 @@
 """Turn findings into review text. Pure: no GitHub or HTTP."""
 
 from collections import Counter
+from typing import TYPE_CHECKING
 
 from app.review.schemas import Finding
+
+if TYPE_CHECKING:
+    from app.review.architecture import ArchitectureFinding
 
 MAX_SKIPPED_LISTED = 20
 INLINE_NOTE = " See the inline comments."
@@ -35,6 +39,7 @@ def render_summary(
     held: int = 0,
     repeated: int = 0,
     public: bool = False,
+    notes: list[str] | None = None,
 ) -> str:
     """The review's top-level text. `overflow` = findings cut by the comment cap, `merged` =
     duplicates folded into another finding; both are stated so the list is never silently short.
@@ -74,6 +79,8 @@ def render_summary(
         )
     if merged:
         lines.append(f"{merged} duplicate finding(s) were merged into the ones above.")
+    if notes:
+        lines += ["", *notes]
     if skipped:
         lines += ["", f"Skipped {len(skipped)} file(s):"]
         lines += [f"- `{_inline(name)}`: {reason}" for name, reason in skipped[:MAX_SKIPPED_LISTED]]
@@ -109,3 +116,20 @@ def render_confirmed_summary(findings: list[Finding], public: bool = False) -> s
     severities = Counter(f.severity.value for f in findings)
     detail = ", ".join(f"{n} {sev}" for sev, n in severities.items())
     return f"{len(findings)} finding(s) confirmed by a maintainer: {detail}.{INLINE_NOTE}"
+
+
+def render_architecture_notes(findings: list["ArchitectureFinding"]) -> list[str]:
+    """The "Architecture notes" section of the summary: design-level findings have no line, so
+    they are listed here instead of inline. File names are untrusted and flattened."""
+    if not findings:
+        return []
+    lines = ["Architecture notes:"]
+    for finding in findings:
+        files = ", ".join(f"`{_inline(name)}`" for name in finding.files)
+        where = f" (files: {files})" if files else ""
+        lines.append(
+            f"- **[{finding.severity.value.upper()}] {finding.title}**: {finding.rationale}{where}"
+        )
+        if finding.suggestion:
+            lines.append(f"  Suggestion: {finding.suggestion}")
+    return lines

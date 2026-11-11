@@ -144,6 +144,18 @@ uv run mypy app
 uv run python -m evals.run --runs 3              # real model calls, costs money; --check enforces thresholds
 ```
 
+## Phase 10: hardening and product improvements
+
+What changed (details in TASKS.md and ADRs 0007-0009): out-of-order webhooks are handled; failed or empty reviews
+are never reported as clean; closed PRs and drafts are skipped; only critical findings wait for `/confirm`;
+findings are not repeated on later pushes, and "Fixed in <sha>" replies resolve their threads; `/dismiss` marks
+false positives; on public repos high/critical security findings never appear on the PR (they go to a private
+channel, fail closed); an optional architecture agent reads related repo files.
+
+Numbers: the Phase 10 changes add about 200 unit tests (370 -> 570) (no real model calls). **No new eval numbers yet**: the
+architecture agent's golden/red-team measurement and the public-repo sandbox check are still to do (see TASKS.md
+10.18, 10.21, 10.25).
+
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): flow, components, data model, trust boundaries

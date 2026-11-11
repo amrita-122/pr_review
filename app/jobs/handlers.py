@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import runs
+from app.db.runs import ARCH_NOTE
 from app.db.session import get_session
 from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
@@ -33,24 +34,33 @@ from app.github.client import (
     resolve_review_thread,
     review_exists,
 )
+from app.github.context import fetch_context_files
 from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
+from app.review.architecture import (
+    ArchitectureFinding,
+    ArchitectureReviewer,
+    make_architecture_reviewer,
+    validate_architecture,
+)
 from app.review.checkpoint import delete_thread, open_checkpointer
+from app.review.context import candidate_paths
 from app.review.cost import cost_from_metadata
 from app.review.dedupe import ALREADY_POSTED, KnownFinding, is_repeat_of
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
-from app.review.llm import Reviewer, build_review_setup
+from app.review.llm import Reviewer, build_chat_model, build_review_setup, load_prompt
 from app.review.render import (
+    render_architecture_notes,
     render_comment,
     render_confirmed_summary,
     render_fallback_summary,
     render_summary,
 )
-from app.review.schemas import Severity
+from app.review.schemas import Finding, Severity
 from app.review.triage import Triager
 from app.review.validate import Dropped
-from app.review.visibility import PRIVATE_DELIVERED, PRIVATE_FAILED
+from app.review.visibility import PRIVATE_DELIVERED, PRIVATE_FAILED, PRIVATE_SEVERITIES
 
 logger = structlog.get_logger()
 
@@ -100,6 +110,18 @@ def pending_comment(held: int, severities: frozenset[Severity], public: bool = F
 def build_reviewers() -> Mapping[str, Reviewer]:
     """The one place the job creates the real models. Tests replace this with a fake."""
     return build_review_setup(get_settings()).reviewers
+
+
+def build_architect() -> ArchitectureReviewer | None:
+    """The architecture agent's model, or None while it is off (the default)."""
+    settings = get_settings()
+    if not settings.architecture_agent_enabled:
+        return None
+    return make_architecture_reviewer(
+        build_chat_model(settings),
+        prompt=load_prompt(settings.architecture_prompt_version),
+        timeout_seconds=settings.model_timeout_seconds,
+    )
 
 
 def build_triager() -> Triager | None:
@@ -339,15 +361,18 @@ async def _run(
         )
         private_dropped = await _deliver_private(payload, token, outcome, settings)
         dropped = outcome.dropped + private_dropped
+        notes, arch_rows = await _architecture_step(
+            payload, token, parsed_files, outcome, private_dropped, settings
+        )
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
             # review is NOT held (ADR 0007, amended): it goes out now, once.
-            if outcome.findings:
-                _record(
-                    "findings",
-                    lambda s: runs.save_findings(s, run_id, outcome.findings, dropped),
+            _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, dropped))
+            _record("architecture", lambda s: runs.save_architecture_rows(s, run_id, arch_rows))
+            if outcome.findings or notes:
+                summary, comments = _render(
+                    outcome, held=outcome.pending, public=payload.is_public, notes=notes
                 )
-                summary, comments = _render(outcome, held=outcome.pending, public=payload.is_public)
                 if await _post_once(payload, token, summary, comments) == "superseded":
                     await delete_thread(saver, run_id)
                     return "superseded"
@@ -362,7 +387,8 @@ async def _run(
         raise JobFailure(MODEL, True, "every file failed review")
 
     _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, dropped))
-    summary, comments = _render(outcome, public=payload.is_public)
+    _record("architecture", lambda s: runs.save_architecture_rows(s, run_id, arch_rows))
+    summary, comments = _render(outcome, public=payload.is_public, notes=notes)
     result = await _post_once(payload, token, summary, comments)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
@@ -488,7 +514,10 @@ async def _post_once(
 
 
 def _render(
-    outcome: ReviewOutcome, held: int = 0, public: bool = False
+    outcome: ReviewOutcome,
+    held: int = 0,
+    public: bool = False,
+    notes: list[str] | None = None,
 ) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
@@ -504,6 +533,7 @@ def _render(
         held=held,
         repeated=repeated,
         public=public,
+        notes=notes,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
@@ -766,6 +796,34 @@ async def _dismiss(payload: ConfirmJobPayload, token: str, settings: Settings) -
     return "dismissed"
 
 
+async def _try_private(
+    payload: ReviewJobPayload,
+    token: str,
+    finding: Finding,
+    settings: Settings,
+    delivered_so_far: int,
+    location: str | None = None,
+) -> str:
+    """Send ONE finding to the private channel. Returns PRIVATE_DELIVERED, or PRIVATE_FAILED for
+    every other outcome (fail closed: nothing about it is ever written to the PR)."""
+    if settings.private_channel == "none":
+        logger.warning("private_delivery_skipped", why="no private channel configured")
+        return PRIVATE_FAILED
+    if delivered_so_far >= settings.max_private_per_run:
+        logger.warning("private_delivery_skipped", why="over the per-review cap")
+        return PRIVATE_FAILED
+    try:
+        await create_draft_advisory(
+            token, payload.owner, payload.repo, finding, payload.number, payload.head_sha, location
+        )
+    except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        logger.warning("private_delivery_failed", error=type(exc).__name__, status=status)
+        return PRIVATE_FAILED
+    return PRIVATE_DELIVERED
+
+
 async def _deliver_private(
     payload: ReviewJobPayload, token: str, outcome: ReviewOutcome, settings: Settings
 ) -> list[Dropped]:
@@ -788,24 +846,72 @@ async def _deliver_private(
             results.append((finding, PRIVATE_DELIVERED))
             delivered += 1
             continue
-        reason = PRIVATE_FAILED
-        if settings.private_channel == "none":
-            logger.warning("private_delivery_skipped", why="no private channel configured")
-        elif delivered >= settings.max_private_per_run:
-            logger.warning("private_delivery_skipped", why="over the per-review cap")
-        else:
-            try:
-                await create_draft_advisory(
-                    token, payload.owner, payload.repo, finding, payload.number, payload.head_sha
-                )
-                reason = PRIVATE_DELIVERED
-                delivered += 1
-            except Exception as exc:
-                _invalidate_on_401(exc, payload.installation_id)
-                status = (
-                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-                )
-                logger.warning("private_delivery_failed", error=type(exc).__name__, status=status)
+        reason = await _try_private(payload, token, finding, settings, delivered)
+        delivered += reason == PRIVATE_DELIVERED
         results.append((finding, reason))
     _record("private_count", lambda s: runs.set_private_count(s, run_id, len(results)))
     return results
+
+
+async def _architecture_step(
+    payload: ReviewJobPayload,
+    token: str,
+    parsed_files: Mapping[str, ParsedFile],
+    outcome: ReviewOutcome,
+    private_dropped: list[Dropped],
+    settings: Settings,
+) -> tuple[list[str], list[tuple[str, str, str, str]]]:
+    """The architecture agent (ADR 0009). Returns (summary lines, rows for the database).
+
+    Off by default. Best effort by design: any failure (retrieval, model, parsing) is logged by
+    kind and yields no notes; it never fails or delays the review that is already worth posting.
+    Related files are read here, at the edge, and handed to the agent as plain data.
+    """
+    architect = build_architect()
+    if architect is None or not outcome.reviewed:
+        return [], []
+    try:
+        reviewed = {p: parsed_files[p] for p in outcome.reviewed if p in parsed_files}
+        context = await fetch_context_files(
+            token,
+            payload.owner,
+            payload.repo,
+            payload.head_sha,
+            candidate_paths(reviewed),
+            max_files=settings.architecture_max_files,
+            max_chars_per_file=settings.architecture_max_chars_per_file,
+            max_total_chars=settings.architecture_max_total_chars,
+        )
+        found = await architect(reviewed, context)
+    except Exception as exc:
+        logger.warning("architecture_step_failed", error=type(exc).__name__)
+        return [], []
+
+    run_id = payload.run_id
+    known_titles = _critical(
+        lambda s: runs.known_architecture_titles(s, payload.repo_full_name, payload.number, run_id)
+    )
+    checked = validate_architecture(
+        found,
+        known_paths=set(reviewed) | {f.path for f in context},
+        known_titles=known_titles,
+        max_findings=settings.architecture_max_findings,
+    )
+    summary_findings: list[ArchitectureFinding] = []
+    rows: list[tuple[str, str, str, str]] = []
+    delivered = sum(reason == PRIVATE_DELIVERED for _, reason in private_dropped)
+    for finding in checked.kept:
+        file = finding.files[0] if finding.files else "(repository)"
+        private = payload.is_public and finding.severity in PRIVATE_SEVERITIES
+        if not private:
+            summary_findings.append(finding)
+            rows.append((file, finding.severity.value, finding.title, ARCH_NOTE))
+            continue
+        # Public repo, high/critical: private channel only, fail closed (ADR 0008).
+        where = ", ".join(f"`{p}`" for p in finding.files) or "the repository as a whole"
+        reason = await _try_private(
+            payload, token, finding.policy_view(), settings, delivered, location=where
+        )
+        delivered += reason == PRIVATE_DELIVERED
+        rows.append((file, finding.severity.value, finding.title, reason))
+    return render_architecture_notes(summary_findings), rows

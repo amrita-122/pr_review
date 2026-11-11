@@ -301,8 +301,9 @@ on the sandbox repo (late webhook, all files failing) and fixed.
 - [~] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
       permission (`repository_advisories: write`), that a draft is invisible to non-maintainers, and what happens on
       repos with advisories disabled. If it does not work, switch the ADR's channel to email and say why.
-      PARTLY DONE: docs read and recorded in ADR 0008 (what is confirmed, what is not). Still needs a try on a
-      real public sandbox repo (installation token allowed? draft invisible to a read-only user? disabled advisories?).
+      PARTLY DONE: docs read and recorded in ADR 0008. Sandbox try on 2026-11-11: installation token CAN create a draft
+      (201) and the public cannot see it (404). STILL OPEN: draft as seen by a signed-in read-only user, and the error
+      when advisories are disabled.
 - [x] 10.19 Read `repository.private` from the webhook into the job payload / run record.
 - [x] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
       "review complete" line at the end (no category, severity, file or line). Medium, low and non-security findings stay
@@ -315,14 +316,18 @@ on the sandbox repo (late webhook, all files failing) and fixed.
 nothing in the PR, its checks or its comments names the vulnerability.
 
 ### Branch 4 — `feat/architecture-agent`
-- [ ] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
-- [ ] 10.23 Context retrieval at the edge (not in `review_diff`): fetch related files through the Contents API (read-only;
+- [x] 10.22 ADR 0009 accepted; settings `ARCHITECTURE_AGENT_ENABLED` (default false) and its file/character caps.
+- [x] 10.23 Context retrieval at the edge (not in `review_diff`): fetch related files through the Contents API (read-only;
       permission already held), under hard caps; `review_diff` receives them as data, so it stays pure.
-- [ ] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
+- [x] 10.24 Prompt `architecture_v1.md`: auth/authz boundaries, trust boundaries, secrets handling, unsafe defaults, missing
       validation layers. Repo files get the same randomized delimiters and output policy as the diff. Findings have no line:
       they go to the summary (private repo) or the private channel (public repo, high/critical).
-- [ ] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
+- [~] 10.25 Golden cases (planted architectural flaws + clean designs) and red-team cases (injection inside repo files);
       measure precision/recall and cost; record results in README and SECURITY.md.
+      PARTLY DONE: 12 golden cases (6 planted flaws, 4 clean designs... see evals/architecture_cases.py), 5 red-team
+      cases (injection inside a repo file) and the runner `python -m evals.architecture_run --confirm-spend` exist and
+      their scoring is unit-tested. NOT DONE: the real measurement (it spends money, so it needs your go) and the README/
+      SECURITY.md numbers.
 - [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
 **Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
 numbers justify turning it on.

@@ -691,3 +691,45 @@ def set_private_count(session: Session, run_id: str, count: int) -> None:
     if run is not None:
         run.private_findings = count
         session.commit()
+
+
+# --- architecture notes ------------------------------------------------------------------------
+
+ARCH_CATEGORY = "architecture"
+ARCH_NOTE = "architecture note (in the summary)"
+
+
+def save_architecture_rows(
+    session: Session, run_id: str, rows: list[tuple[str, str, str, str]]
+) -> None:
+    """(file, severity, title, reason) per architecture finding. They have no line (stored as 0)
+    and are never posted inline, so `posted` is False. A retry replaces this run's rows."""
+    session.execute(
+        delete(FindingRow).where(FindingRow.run_id == run_id, FindingRow.category == ARCH_CATEGORY)
+    )
+    session.add_all(
+        FindingRow(
+            run_id=run_id, file=file, line=0, severity=severity, category=ARCH_CATEGORY,
+            title=title, posted=False, drop_reason=reason,
+        )
+        for file, severity, title, reason in rows
+    )  # fmt: skip
+    session.commit()
+
+
+def known_architecture_titles(
+    session: Session, repo: str, pr_number: int, exclude_run_id: str
+) -> set[str]:
+    """Titles of architecture findings already reported on this PR (summary or private channel)."""
+    rows = session.scalars(
+        select(FindingRow.title)
+        .join(ReviewRun, ReviewRun.id == FindingRow.run_id)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != exclude_run_id,
+            FindingRow.category == ARCH_CATEGORY,
+            FindingRow.drop_reason.in_((ARCH_NOTE, PRIVATE_DELIVERED)),
+        )
+    ).all()
+    return set(rows)

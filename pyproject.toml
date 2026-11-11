@@ -50,6 +50,7 @@ select = ["E", "F", "I", "B", "UP", "S"]   # errors, pyflakes, imports, bugbear,
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]       # assert is fine in tests
 "evals/redteam/build_cases.py" = ["E501"]
+"evals/architecture_cases.py" = ["E501"]  # case text is data: long lines are the point
 
 [tool.mypy]
 python_version = "3.12"

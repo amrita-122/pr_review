@@ -14,14 +14,16 @@ from app.review.schemas import Finding
 MAX_SUMMARY_CHARS = 1024  # GitHub's limit for the summary
 
 
-def advisory_body(finding: Finding, pr_number: int, head_sha: str) -> dict[str, object]:
+def advisory_body(
+    finding: Finding, pr_number: int, head_sha: str, location: str | None = None
+) -> dict[str, object]:
     """The request body. Text comes from the model but has passed the output policy (no links,
     mentions or HTML); the location lines are ours."""
     parts = [
         finding.rationale,
         "",
-        f"Location: `{finding.file_path}` line {finding.line} (pull request #{pr_number}, "
-        f"commit `{head_sha[:12]}`).",
+        f"Location: {location or f'`{finding.file_path}` line {finding.line}'} "
+        f"(pull request #{pr_number}, commit `{head_sha[:12]}`).",
     ]
     if finding.suggestion:
         parts += ["", f"Suggestion: {finding.suggestion}"]
@@ -36,14 +38,20 @@ def advisory_body(finding: Finding, pr_number: int, head_sha: str) -> dict[str, 
 
 
 async def create_draft_advisory(
-    token: str, owner: str, repo: str, finding: Finding, pr_number: int, head_sha: str
+    token: str,
+    owner: str,
+    repo: str,
+    finding: Finding,
+    pr_number: int,
+    head_sha: str,
+    location: str | None = None,
 ) -> None:
     """Create ONE draft advisory. Raises httpx.HTTPStatusError on 403/404/422 (no permission,
     advisories unavailable, rejected body): the caller decides what that means."""
     async with github_client() as client:
         response = await client.post(
             f"/repos/{owner}/{repo}/security-advisories",
-            json=advisory_body(finding, pr_number, head_sha),
+            json=advisory_body(finding, pr_number, head_sha, location),
             headers=_headers(token),
         )
     response.raise_for_status()
