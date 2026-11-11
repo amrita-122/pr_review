@@ -41,7 +41,12 @@ class Base(BaseModel):
     sha: str
 
 
+class PrUser(BaseModel):
+    login: str
+
+
 class PullRequest(BaseModel):
+    user: PrUser | None = None  # the PR author; only the login is read, and only if well-formed
     head: Head
     base: Base | None = None  # the commit the PR merges into: where trusted repo config is read
     # When GitHub last changed this PR. Used only to order out-of-order deliveries of pushes.
@@ -73,6 +78,13 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def author_login(self) -> str | None:
+        user = self.pull_request.user
+        if user is None or LOGIN_PATTERN.fullmatch(user.login) is None:
+            return None
+        return user.login
 
     @property
     def base_sha(self) -> str | None:

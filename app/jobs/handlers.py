@@ -8,6 +8,7 @@ not post a second review (see _post_once), and it will not post for a superseded
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -66,6 +67,7 @@ from app.review.visibility import PRIVATE_DELIVERED, PRIVATE_FAILED, PRIVATE_SEV
 logger = structlog.get_logger()
 
 FAILURE_COMMENT = "Review failed. Push a new commit to try again."
+BUDGET_COMMENT = "Review skipped: the daily review budget is used up. Push again tomorrow."
 EXPIRED_COMMENT = (
     "Held findings expired without a maintainer's confirmation and were not posted. "
     "Push a new commit to run the review again."
@@ -304,6 +306,9 @@ async def _run(
     ):
         logger.info("run_skipped", reason="superseded or missing")
         return "superseded"
+
+    if await _over_daily_budget(payload, settings):
+        return "skipped_budget"
 
     token = await get_installation_token(payload.installation_id)
     repo_config = await fetch_repo_config(token, payload.owner, payload.repo, payload.base_sha)
@@ -558,6 +563,29 @@ def _render(
     )
     comments = [to_review_comment(f) for f in outcome.findings]
     return summary, comments
+
+
+async def _over_daily_budget(payload: ReviewJobPayload, settings: Settings) -> bool:
+    """10.34: when today's spend has reached MAX_COST_PER_DAY_USD, say so once and skip the run.
+
+    Checked BEFORE any model call. A run that is already past this point is allowed to finish, so
+    the real total can exceed the cap by at most the runs in flight. The notice is static text.
+    """
+    cap = settings.max_cost_per_day_usd
+    if cap <= 0:
+        return False
+    spent = _critical(lambda s: runs.cost_since(s, runs.day_start(datetime.now(UTC))))
+    if spent < Decimal(str(cap)):
+        return False
+    logger.warning("daily_budget_reached", spent_usd=float(spent), cap_usd=cap)
+    _critical(lambda s: runs.finish_run(s, payload.run_id, status=runs.SKIPPED))
+    try:
+        token = await get_installation_token(payload.installation_id)
+        await post_pr_comment(token, payload.owner, payload.repo, payload.number, BUDGET_COMMENT)
+    except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
+        logger.warning("budget_notice_not_posted", error=type(exc).__name__)
+    return True
 
 
 async def post_failure_notice(payload: ReviewJobPayload) -> None:

@@ -349,7 +349,11 @@ numbers justify turning it on.
 - [x] 10.33 Multi-line ranges and LEFT-side comments: `Finding.start_line`/`side`, deleted-line numbers in
       `ParsedFile.removed_lines`, range validation (same side, in the diff, max 20 lines), GitHub payload.
       Prompts NOT updated, so models never emit them yet (inert until a measured prompt bump).
-- [ ] 10.34 Per-PR and per-day cost budget; per-author rate limit; failure alerting; dashboard over runs/findings.
+- [x] 10.34 (part) `MAX_COST_PER_DAY_USD` (skips the run, posts a static notice), `MAX_RUNS_PER_AUTHOR_PER_HOUR`,
+      `ALERT_WEBHOOK_URL` (a static message when a job fails for good). All default off. Migration b1d5e83f4c70
+      (also stores `findings.rationale` for /explain). NOT done: a per-PR cap (size caps already bound it),
+      the dashboard (new UI surface). OPEN: architecture-agent token usage may be missing from `cost_usd`
+      (not verified), so the day budget could undercount.
 - [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents.
 **Phase 10 done when:** branches 1-4 are merged, the README has the Phase 10 section with numbers, and docs/SECURITY.md
 lists the new residual risks.

@@ -32,6 +32,7 @@ from app.db import runs
 from app.db.models import Job
 from app.db.retention import prune_old_rows
 from app.db.session import get_session
+from app.jobs.alerts import send_alert
 from app.jobs.errors import INTERNAL, JobFailure, classify
 from app.jobs.handlers import (
     announce_unannounced_holds,
@@ -238,6 +239,11 @@ async def _on_failure(claimed: ClaimedJob, failure: JobFailure, settings: Settin
                 )
         with contextlib.suppress(ValidationError):
             await post_failure_notice(ReviewJobPayload.model_validate(claimed.payload))
+        await send_alert(
+            settings,
+            f"review job failed for good: reason={failure.reason} run_id={run_id} "
+            f"attempts={claimed.attempts}",
+        )
         logger.warning(
             "job_failed", job_id=claimed.id, reason=failure.reason, attempts=claimed.attempts
         )

@@ -1,6 +1,7 @@
 """Enqueue side of the job queue. Runs inside the webhook's database transaction."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy.orm import Session
@@ -12,6 +13,23 @@ from app.github.webhooks import PullRequestEvent
 from app.jobs.payload import CONFIRM_REVIEW, REVIEW_PR, ConfirmJobPayload, ReviewJobPayload
 
 logger = structlog.get_logger()
+
+
+IN_FLIGHT_OR_DONE = (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED)
+
+
+def _rate_limited(session: Session, event: PullRequestEvent, settings: Settings) -> bool:
+    """Too many reviews queued for this author in the last hour (10.34)? Counts runs, so a
+    contributor who pushes in a loop cannot spend the model budget."""
+    limit = settings.max_runs_per_author_per_hour
+    login = event.author_login
+    if limit <= 0 or login is None:
+        return False
+    since = datetime.now(UTC) - timedelta(hours=1)
+    if runs.count_author_runs_since(session, login, since) < limit:
+        return False
+    logger.warning("author_rate_limited", pr_number=event.number, limit=limit)
+    return True
 
 
 def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings) -> bool:
@@ -33,6 +51,10 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
         logger.info("runs_superseded", count=superseded, repo=repo, pr_number=event.number)
 
     existing = runs.get_by_key(session, repo, event.number, event.head_sha)
+    if (existing is None or existing.status not in IN_FLIGHT_OR_DONE) and _rate_limited(
+        session, event, settings
+    ):
+        return False
     if existing is None:
         run_id = uuid.uuid4().hex
         runs.create_queued(
@@ -45,8 +67,9 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             model=settings.model_review,
             head_updated_at=stamp,
             repo_private=event.repo_private,
+            author_login=event.author_login,
         )
-    elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
+    elif existing.status in IN_FLIGHT_OR_DONE:
         return False
     else:  # failed or superseded earlier, and the same commit is back (reopened): run it again
         run_id = existing.id

@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.review.cost import Prices, PriceTable
@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # Deterministic secret scan of added lines before validation (10.32). Off until its false-alarm
     # rate is measured on real diffs.
     secret_scan_enabled: bool = False
+    # Spend and abuse limits (10.34). 0 = no limit. The per-PR cost is bounded by the size caps
+    # above (max_total_chars_per_pr, max_files_per_pr), so there is no separate per-PR budget.
+    max_cost_per_day_usd: float = Field(default=0, ge=0)  # all runs started since 00:00 UTC
+    max_runs_per_author_per_hour: int = Field(default=0, ge=0)  # reviews queued per PR author
+    # A Slack-style incoming webhook told when a review job fails for good. A secret.
+    alert_webhook_url: SecretStr | None = None
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False
