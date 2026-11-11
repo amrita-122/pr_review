@@ -33,5 +33,38 @@ ADR 0007 held critical findings for a human but still posted them publicly after
 - A neutral note still tells readers that a review finished (no content). Not zero signal; acceptable.
 - Contributors see less on public repos; the dashboard / advisory is where maintainers read details.
 
+## Verification against GitHub's docs (step 10.18, 2026-11-10)
+Read: [REST: repository advisories](https://docs.github.com/en/rest/security-advisories/repository-advisories),
+[Creating a repository security advisory](https://docs.github.com/en/code-security/security-advisories/working-with-repository-security-advisories/creating-a-repository-security-advisory),
+[Permissions required for GitHub Apps](https://docs.github.com/en/rest/overview/permissions-required-for-github-apps).
+
+Confirmed by the docs:
+- `POST /repos/{owner}/{repo}/security-advisories` creates a repository advisory. Required body: `summary`,
+  `description`, `vulnerabilities` (each with `package.ecosystem`). Optional: `severity` OR `cvss_vector_string`,
+  `cwe_ids`, `cve_id`, `credits`. Statuses: 201, 403, 404, 422. `summary` max 1024, `description` max 65535.
+- The permission is "Repository security advisories" (write). The permissions page lists the endpoint for
+  installation tokens (IAT).
+- Per the API pages, an unpublished advisory is readable only by security managers, repository admins and
+  collaborators on that advisory.
+
+NOT confirmed (must be tried on a real public sandbox repo before this ADR is Accepted):
+1. The REST page says the caller "must be a security manager or administrator" to create a draft. The docs do not
+   say how that maps to a GitHub App installation token. Try it; if it is a 403, use the email channel below.
+2. The "creating an advisory" page says "Anyone with read access to the repository can see the advisory" (credits
+   section), which conflicts with the API pages. Check with a read-only account that a draft is invisible.
+3. What happens when advisories are disabled or the repo is private: undocumented (403, 404 and 422 all possible).
+4. The create call needs a `vulnerabilities` entry; for a code finding there is no package. Use ecosystem `other`
+   and a placeholder name (to be tried).
+
+Until 1-3 are checked the code treats the channel as unproven: it is behind `PRIVATE_CHANNEL` (default `none`) and
+FAILS CLOSED (see below). Nothing in the PR text changes if the channel is unavailable.
+
+## Fail-closed rule (implemented in 10.20)
+On a public repo a high/critical security finding is NEVER written to a PR, whatever the channel does:
+- channel works: draft advisory created; the PR gets the neutral "review complete" line;
+- channel fails or is unavailable (disabled advisories, 403/404/422, no permission): the finding is dropped from
+  the PR, kept in the database with `drop_reason = "private delivery failed"`, logged by reason only, and the run
+  record counts it, so the maintainer can read it in the database/dashboard. The PR still gets only the neutral line.
+
 ## Revisit when
 GitHub changes advisory permissions, or a maintainer-only channel (email) is added for other uses.

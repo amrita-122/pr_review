@@ -17,10 +17,15 @@ class ReviewJobPayload(BaseModel):
     repo: str
     number: int
     head_sha: str
+    repo_private: bool | None = None  # None = unknown = treated as public (fail closed)
 
     @property
     def repo_full_name(self) -> str:
         return f"{self.owner}/{self.repo}"
+
+    @property
+    def is_public(self) -> bool:
+        return self.repo_private is not True
 
     @classmethod
     def from_event(cls, event: PullRequestEvent, run_id: str) -> "ReviewJobPayload":
@@ -31,6 +36,7 @@ class ReviewJobPayload(BaseModel):
             repo=event.repo,
             number=event.number,
             head_sha=event.head_sha,
+            repo_private=event.repo_private,
         )
 
 

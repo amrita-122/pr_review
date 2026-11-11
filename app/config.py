@@ -2,6 +2,7 @@ import re
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,6 +59,11 @@ class Settings(BaseSettings):
     enabled_agents: str = "security,quality"
     # /dismiss in a finding's thread (needs the App subscribed to "Pull request review comment").
     feedback_enabled: bool = True
+    # Public repos (ADR 0008): where high/critical security findings go instead of the PR.
+    # "none" = nowhere but the database (fail closed); "advisory" = a draft security advisory
+    # (needs the App permission "Repository security advisories: write").
+    private_channel: Literal["none", "advisory"] = "none"
+    max_private_per_run: int = 5  # advisories created per review; the rest stay in the database
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False

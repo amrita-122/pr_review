@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ConfirmDenial, FindingRow, ReviewRun
 from app.review.schemas import Finding
+from app.review.visibility import PRIVATE_DELIVERED
 
 MAX_ERROR_CHARS = 500
 
@@ -54,6 +55,7 @@ def create_queued(
     prompt_version: str,
     model: str,
     head_updated_at: datetime | None = None,
+    repo_private: bool | None = None,
 ) -> None:
     """Add (not commit) a queued run: the caller commits it together with the job."""
     session.add(
@@ -63,6 +65,7 @@ def create_queued(
             pr_number=pr_number,
             head_sha=head_sha,
             head_updated_at=head_updated_at,
+            repo_private=repo_private,
             status=QUEUED,
             prompt_version=prompt_version,
             model=model,
@@ -483,9 +486,13 @@ def list_known_findings(
             ReviewRun.repo == repo,
             ReviewRun.pr_number == pr_number,
             ReviewRun.id != exclude_run_id,
-            ReviewRun.posted_at.is_not(None),  # a review that really went out
-            FindingRow.posted.is_(True),
             FindingRow.fixed_in_sha.is_(None),  # a fixed one that comes back is a NEW finding
+            or_(
+                # a review that really went out
+                (ReviewRun.posted_at.is_not(None) & FindingRow.posted.is_(True)),
+                # or a finding already delivered to the private channel (do not send it twice)
+                FindingRow.drop_reason == PRIVATE_DELIVERED,
+            ),
         )
     ).all()
     return [(r.file, r.category, r.line) for r in rows]
@@ -666,3 +673,21 @@ def claim_dismissed_comment(session: Session, run_id: str) -> bool:
     )
     session.commit()
     return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+def delivered_private(session: Session, run_id: str) -> set[tuple[str, str, int]]:
+    """(file, category, line) of the findings of this run already sent to the private channel,
+    so a retried job does not create the same advisory twice."""
+    rows = session.execute(
+        select(FindingRow.file, FindingRow.category, FindingRow.line).where(
+            FindingRow.run_id == run_id, FindingRow.drop_reason == PRIVATE_DELIVERED
+        )
+    ).all()
+    return {(r.file, r.category, r.line) for r in rows}
+
+
+def set_private_count(session: Session, run_id: str, count: int) -> None:
+    run = session.get(ReviewRun, run_id)
+    if run is not None:
+        run.private_findings = count
+        session.commit()

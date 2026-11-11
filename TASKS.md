@@ -298,15 +298,19 @@ on the sandbox repo (late webhook, all files failing) and fixed.
 **Done when:** push a fix to a sandbox PR -> the old comment is answered and resolved and nothing is duplicated.
 
 ### Branch 3 — `feat/private-delivery`
-- [ ] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
+- [~] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
       permission (`repository_advisories: write`), that a draft is invisible to non-maintainers, and what happens on
       repos with advisories disabled. If it does not work, switch the ADR's channel to email and say why.
-- [ ] 10.19 Read `repository.private` from the webhook into the job payload / run record.
-- [ ] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
+      PARTLY DONE: docs read and recorded in ADR 0008 (what is confirmed, what is not). Still needs a try on a
+      real public sandbox repo (installation token allowed? draft invisible to a read-only user? disabled advisories?).
+- [x] 10.19 Read `repository.private` from the webhook into the job payload / run record.
+- [x] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
       "review complete" line at the end (no category, severity, file or line). Medium, low and non-security findings stay
       inline. Private repos behave as before. Applies to the `/confirm` pending comment too (it must not say "critical").
-- [ ] 10.21 Tests for both modes; red-team case: a finding's title or rationale must never appear in public PR text on a
+- [x] 10.21 Tests for both modes; red-team case: a finding's title or rationale must never appear in public PR text on a
       public repo. Sandbox check with a public repo and a private one.
+      Tests done (19). STILL TO DO BY HAND: the sandbox check with one public and one private repo (and the
+      App permission `repository_advisories: write`, see ADR 0008); until then PRIVATE_CHANNEL stays `none`.
 **Done when:** on a public sandbox repo a planted SQL injection produces a draft advisory and a neutral PR note, and
 nothing in the PR, its checks or its comments names the vulnerability.
 

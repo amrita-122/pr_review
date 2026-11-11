@@ -6,6 +6,7 @@ from app.review.schemas import Finding
 
 MAX_SKIPPED_LISTED = 20
 INLINE_NOTE = " See the inline comments."
+PUBLIC_CLOSING_LINE = "Review complete."  # on a public PR this is ALL it says about the rest
 MAX_REVIEW_BODY_CHARS = 60_000  # GitHub's limit is 65,536
 MAX_NAME_CHARS = 100
 
@@ -33,6 +34,7 @@ def render_summary(
     failed: int = 0,
     held: int = 0,
     repeated: int = 0,
+    public: bool = False,
 ) -> str:
     """The review's top-level text. `overflow` = findings cut by the comment cap, `merged` =
     duplicates folded into another finding; both are stated so the list is never silently short.
@@ -47,11 +49,13 @@ def render_summary(
             lines.append(
                 "By category: " + ", ".join(f"{n} {cat}" for cat, n in categories.most_common())
             )
+    elif public:
+        pass  # a public PR never says "no findings": that would also be a signal (ADR 0008)
     elif (held or repeated) and not failed and reviewed_count:
         lines.append("No new findings.")
     elif reviewed_count == 0:
         lines.append("No files were reviewed, so there is nothing to report.")
-    elif failed:
+    elif failed and not public:
         lines.append("No findings in the files that were reviewed.")
     else:
         lines.append("No findings.")
@@ -75,6 +79,8 @@ def render_summary(
         lines += [f"- `{_inline(name)}`: {reason}" for name, reason in skipped[:MAX_SKIPPED_LISTED]]
         if len(skipped) > MAX_SKIPPED_LISTED:
             lines.append(f"- ...and {len(skipped) - MAX_SKIPPED_LISTED} more")
+    if public:
+        lines += ["", PUBLIC_CLOSING_LINE]
     return "\n".join(lines)
 
 
@@ -96,8 +102,10 @@ def render_fallback_summary(summary: str, comments: list[tuple[str, int, str]]) 
     return "\n".join(parts)[:MAX_REVIEW_BODY_CHARS]
 
 
-def render_confirmed_summary(findings: list[Finding]) -> str:
+def render_confirmed_summary(findings: list[Finding], public: bool = False) -> str:
     """Summary of the follow-up review posted after a maintainer's /confirm."""
+    if public:
+        return f"{len(findings)} finding(s) confirmed by a maintainer.{INLINE_NOTE}"
     severities = Counter(f.severity.value for f in findings)
     detail = ", ".join(f"{n} {sev}" for sev, n in severities.items())
     return f"{len(findings)} finding(s) confirmed by a maintainer: {detail}.{INLINE_NOTE}"

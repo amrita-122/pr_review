@@ -58,6 +58,10 @@ class ReviewRun(Base):
     # queued | running | ok | failed | superseded (a newer push replaced it; it must not post)
     # | awaiting_confirmation | confirming | expired (Phase 8)
     status: Mapped[str] = mapped_column(String)
+    # Was the repo private when the webhook arrived? NULL = unknown = treated as public.
+    repo_private: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # High/critical security findings sent to the private channel (or that failed to be) this run.
+    private_findings: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # The webhook's pull_request.updated_at for this head: orders pushes that arrive out of order.
     head_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String)
