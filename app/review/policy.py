@@ -16,6 +16,8 @@ from app.review.schemas import Finding
 MAX_TITLE_CHARS = 200
 MAX_RATIONALE_CHARS = 1000
 MAX_SUGGESTION_CHARS = 1000
+MAX_REPLACEMENT_CHARS = 1000
+MAX_REPLACEMENT_LINES = 20
 
 _CODE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
 # Links, images, and script-capable URI schemes. Checked everywhere, code spans included.
@@ -71,4 +73,23 @@ def policy_violation(finding: Finding) -> str | None:
             return "output policy: html"
         if _REFERENCE.search(outside_code):
             return "output policy: reference"
+    return _replacement_violation(finding.replacement_code)
+
+
+def _replacement_violation(code: str | None) -> str | None:
+    """A replacement is rendered inside a ```suggestion fence and can be committed with one click,
+    so it is held to a stricter standard than prose: no fence (it would break out of the block),
+    no link, no invisible characters. Mentions and HTML are inert inside a fence."""
+    if code is None:
+        return None
+    if not code.strip():
+        return "output policy: empty replacement"
+    if len(code) > MAX_REPLACEMENT_CHARS or code.count("\n") >= MAX_REPLACEMENT_LINES:
+        return "output policy: replacement too long"
+    if "```" in code or "~~~" in code:
+        return "output policy: code fence in replacement"
+    if count_invisible(code):
+        return "output policy: invisible characters"
+    if _URL.search(code):
+        return "output policy: link"
     return None

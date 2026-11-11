@@ -65,6 +65,9 @@ class Finding(BaseModel):
     title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
     rationale: str = Field(min_length=1)
     suggestion: str | None = None
+    # Exact replacement for the commented line (10.27). Rendered as a ```suggestion block, which
+    # GitHub turns into a one-click "Commit suggestion" button, so it is policy-checked.
+    replacement_code: str | None = None
 
 
 class ReviewFinding(Finding):

@@ -332,7 +332,9 @@ nothing in the PR, its checks or its comments names the vulnerability.
 numbers justify turning it on.
 
 ### Optional ideas (do after the four branches, one at a time; each needs a plan and your "go")
-- [ ] 10.27 Suggested-change blocks (render `Finding.suggestion` as a ```suggestion block).
+- [x] 10.27 Suggested-change blocks: new optional `Finding.replacement_code` rendered as a ```suggestion block,
+      policy-checked (no fence/link/invisible, size caps). Prompts NOT yet updated to ask for it, so it is inert
+      until a prompt bump is measured. STILL TO DO BY HAND: see one render on a sandbox PR.
 - [ ] 10.28 Check Run with annotations and a neutral status (public repos: no vulnerability text, see ADR 0008).
 - [ ] 10.29 Per-repo `.review-bot.yml`, read from the BASE branch only (a PR can change its own copy).
 - [ ] 10.30 `/review` and `/explain` commands.
