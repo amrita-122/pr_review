@@ -301,8 +301,9 @@ on the sandbox repo (late webhook, all files failing) and fixed.
 - [~] 10.18 Verify against GitHub docs (note the links in ADR 0008): the draft security advisory endpoint, the extra App
       permission (`repository_advisories: write`), that a draft is invisible to non-maintainers, and what happens on
       repos with advisories disabled. If it does not work, switch the ADR's channel to email and say why.
-      PARTLY DONE: docs read and recorded in ADR 0008 (what is confirmed, what is not). Still needs a try on a
-      real public sandbox repo (installation token allowed? draft invisible to a read-only user? disabled advisories?).
+      PARTLY DONE: docs read and recorded in ADR 0008. Sandbox try on 2026-11-11: installation token CAN create a draft
+      (201) and the public cannot see it (404). STILL OPEN: draft as seen by a signed-in read-only user, and the error
+      when advisories are disabled.
 - [x] 10.19 Read `repository.private` from the webhook into the job payload / run record.
 - [x] 10.20 Public repos: high and critical SECURITY findings go to the private channel; the PR gets only a neutral
       "review complete" line at the end (no category, severity, file or line). Medium, low and non-security findings stay
