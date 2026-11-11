@@ -19,7 +19,7 @@ from app.jobs import handlers, worker
 from app.jobs.errors import JobFailure, classify
 from app.jobs.handlers import FAILURE_COMMENT, review_marker
 from app.review.schemas import Finding
-from tests.helpers import Pipeline
+from tests.helpers import FILES, Pipeline
 from tests.test_webhook_signatures import FIXTURE_PATH
 
 Enqueue = Callable[[PullRequestEvent], None]
@@ -27,10 +27,12 @@ Drain = Callable[[], Awaitable[None]]
 RAW = json.loads(FIXTURE_PATH.read_bytes())
 
 
-def make_event(sha: str | None = None) -> PullRequestEvent:
+def make_event(sha: str | None = None, updated_at: str | None = None) -> PullRequestEvent:
     raw = copy.deepcopy(RAW)
     if sha is not None:
         raw["pull_request"]["head"]["sha"] = sha
+    if updated_at is not None:
+        raw["pull_request"]["updated_at"] = updated_at
     return PullRequestEvent.model_validate(raw)
 
 
@@ -107,6 +109,54 @@ async def test_wrong_line_is_dropped_and_rest_of_review_still_posts(
 
 
 @respx.mock
+async def test_all_files_failing_is_retried_and_never_posted_as_a_review(
+    db_session: Session, enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """10.2: when every file's model call fails there is nothing to report. No review is posted
+    (so no false 'No findings'); the job retries, then the PR gets the short failure notice."""
+    settings_env(monkeypatch, job_max_attempts="2")
+
+    async def broken(path: str, numbered: str) -> list[Finding]:
+        raise RuntimeError("model down")
+
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: broken)
+    event = make_event()
+    gh = Pipeline(event)
+    enqueue(event)
+    await drain()
+    assert job_of(db_session).status == "queued"
+    make_due(db_session)
+    await drain()
+
+    assert gh.reviews.call_count == 0
+    run = run_of(db_session)
+    assert (run.status, run.failure_reason) == ("failed", "model")
+    assert json.loads(gh.comments.calls[0].request.content)["body"] == FAILURE_COMMENT
+
+
+@respx.mock
+async def test_one_failed_file_still_posts_and_says_it_was_not_reviewed(
+    enqueue: Enqueue, drain: Drain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.review.fake import review_file
+
+    async def flaky(path: str, numbered: str) -> list[Finding]:
+        if path != "app/db.py":
+            raise RuntimeError("boom")
+        return review_file(path, numbered)
+
+    monkeypatch.setattr(handlers, "build_reviewers", lambda: flaky)
+    event = make_event()
+    gh = Pipeline(event)
+    other = {"filename": "app/other.py", "status": "modified", "patch": FILES[0]["patch"]}
+    gh.files.mock(return_value=httpx.Response(200, json=[*FILES, other]))
+    enqueue(event)
+    await drain()
+    body = gh.sent_review()["body"]
+    assert "could NOT be reviewed" in body and "No findings." not in body
+
+
+@respx.mock
 async def test_falls_back_to_summary_when_github_rejects_comments(
     enqueue: Enqueue, drain: Drain
 ) -> None:
@@ -116,7 +166,36 @@ async def test_falls_back_to_summary_when_github_rejects_comments(
     enqueue(event)
     await drain()
     assert gh.reviews.call_count == 2
-    assert gh.sent_review(1)["comments"] == []
+    first, retry = gh.sent_review(0), gh.sent_review(1)
+    assert "See the inline comments" in first["body"]
+    assert retry["comments"] == []
+    # 10.5: the retry does not point at comments that do not exist; it lists them instead.
+    assert "See the inline comments" not in retry["body"]
+    assert "could not attach 1 comment(s) inline" in retry["body"]
+    assert "`app/db.py` line 2" in retry["body"]
+    assert gh.reviews_list.call_count == 2  # re-checked for an existing review before the retry
+
+
+@respx.mock
+async def test_review_that_appeared_after_a_422_is_not_posted_twice(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    event = make_event()
+    gh = Pipeline(event)
+
+    def reviews_list(request: httpx.Request) -> httpx.Response:
+        if gh.reviews.call_count == 0:
+            return httpx.Response(200, json=[])
+        run = run_of(db_session)
+        body = f"x\n\n{review_marker(run.id)}"
+        return httpx.Response(200, json=[{"commit_id": event.head_sha, "body": body}])
+
+    gh.reviews_list.mock(side_effect=reviews_list)
+    gh.reviews.mock(return_value=httpx.Response(422, json={}))
+    enqueue(event)
+    await drain()
+    assert gh.reviews.call_count == 1  # the rejected attempt only: no second review
+    assert run_of(db_session).posted_at is not None
 
 
 @respx.mock
@@ -272,6 +351,60 @@ async def test_newer_push_supersedes_the_older_run(
     assert run_of(db_session, "a" * 40).status == "superseded"
     assert run_of(db_session, "b" * 40).status == "ok"
     assert [j.status for j in db_session.scalars(select(Job).order_by(Job.id))] == ["done", "done"]
+
+
+@respx.mock
+async def test_late_webhook_of_an_older_push_does_not_kill_the_newer_run(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    """10.1: push 2's webhook arrives first, push 1's arrives late."""
+    first = make_event("a" * 40, updated_at="2026-11-10T10:00:00Z")
+    second = make_event("b" * 40, updated_at="2026-11-10T10:00:05Z")
+    gh = Pipeline(second)  # GitHub's current head is push 2
+    enqueue(second)
+    enqueue(first)
+    await drain()
+
+    assert gh.reviews.call_count == 1
+    assert gh.sent_review()["commit_id"] == "b" * 40
+    assert run_of(db_session, "b" * 40).status == "ok"
+    db_session.expire_all()
+    assert (
+        db_session.scalars(select(ReviewRun).where(ReviewRun.head_sha == "a" * 40)).first() is None
+    )
+    assert len(list(db_session.scalars(select(Job)))) == 1
+
+
+@respx.mock
+async def test_two_pushes_in_the_same_second_supersede_nothing_but_post_only_the_latest(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    """Equal timestamps: order is unknowable, so neither run is killed at enqueue; the stale
+    one is dropped at post time because GitHub's head is the newer commit."""
+    stamp = "2026-11-10T10:00:00Z"
+    first, second = make_event("a" * 40, stamp), make_event("b" * 40, stamp)
+    gh = Pipeline(second)
+    enqueue(second)
+    enqueue(first)  # arrives late, same second
+    await drain()
+    assert gh.reviews.call_count == 1 and gh.sent_review()["commit_id"] == "b" * 40
+    assert run_of(db_session, "b" * 40).status == "ok"
+    assert run_of(db_session, "a" * 40).status == "superseded"
+
+
+@respx.mock
+async def test_in_order_pushes_still_supersede_by_timestamp(
+    db_session: Session, enqueue: Enqueue, drain: Drain
+) -> None:
+    first = make_event("a" * 40, updated_at="2026-11-10T10:00:00Z")
+    second = make_event("b" * 40, updated_at="2026-11-10T10:00:05Z")
+    gh = Pipeline(second)
+    enqueue(first)
+    enqueue(second)
+    await drain()
+    assert gh.reviews.call_count == 1
+    assert run_of(db_session, "a" * 40).status == "superseded"
+    assert run_of(db_session, "b" * 40).status == "ok"
 
 
 @respx.mock

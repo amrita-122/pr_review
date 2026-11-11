@@ -22,7 +22,6 @@ from app.diff.filters import skip_reason
 from app.diff.parse import DiffParseError, ParsedFile, parse_patch
 from app.github.auth import get_installation_token, invalidate_installation_token
 from app.github.client import (
-    FILES_PER_PAGE,
     ReviewComment,
     get_collaborator_permission,
     get_pr_head_sha,
@@ -31,14 +30,19 @@ from app.github.client import (
     post_review,
     review_exists,
 )
-from app.jobs.errors import classify
+from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.checkpoint import delete_thread, open_checkpointer
 from app.review.cost import cost_from_metadata
 from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_diff
 from app.review.llm import Reviewer, build_review_setup
-from app.review.render import render_comment, render_summary
+from app.review.render import (
+    render_comment,
+    render_confirmed_summary,
+    render_fallback_summary,
+    render_summary,
+)
 from app.review.schemas import Severity
 from app.review.triage import Triager
 
@@ -49,6 +53,25 @@ EXPIRED_COMMENT = (
     "Held findings expired without a maintainer's confirmation and were not posted. "
     "Push a new commit to run the review again."
 )
+
+
+NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
+AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
+MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
+
+
+async def _refuse(payload: ConfirmJobPayload, token: str, text: str) -> None:
+    """Remember the refusal (so the webhook ignores repeats) and answer ONCE per person, with a
+    cap per run. Best effort: a failed reply changes nothing."""
+    run_id, login = payload.run_id, payload.commenter_login
+    if not _critical(lambda s: runs.record_denial(s, run_id, login)):
+        return
+    if _critical(lambda s: runs.denial_count(s, run_id)) > MAX_REFUSAL_REPLIES_PER_RUN:
+        return
+    try:
+        await post_pr_comment(token, payload.owner, payload.repo, payload.number, text)
+    except Exception as exc:
+        logger.warning("refusal_reply_not_posted", error=type(exc).__name__)
 
 
 def pending_comment(held: int, severities: frozenset[Severity]) -> str:
@@ -71,9 +94,10 @@ def build_triager() -> Triager | None:
     return build_review_setup(get_settings()).triager
 
 
-def review_marker(run_id: str) -> str:
-    """Hidden marker in our own review body: how a retry recognises a review it already posted."""
-    return f"<!-- review-run:{run_id} -->"
+def review_marker(run_id: str, *, held: bool = False) -> str:
+    """Hidden marker in our own review body: how a retry recognises a review it already posted.
+    The follow-up review of confirmed findings has its own marker (neither contains the other)."""
+    return f"<!-- review-run:{run_id}:held -->" if held else f"<!-- review-run:{run_id} -->"
 
 
 def _critical[T](fn: Callable[[Session], T]) -> T:
@@ -102,6 +126,12 @@ def _bind_context(payload: ReviewJobPayload) -> None:
     )
 
 
+def _invalidate_on_401(exc: BaseException, installation_id: int) -> None:
+    """A 401 means our cached installation token died early: drop it so the next call mints one."""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
+        invalidate_installation_token(installation_id)
+
+
 async def run_review_job(payload: ReviewJobPayload) -> str:
     """Review one PR head. Returns "posted", "pending" (held), "already_posted", "superseded" or
     "already_handled"; raises JobFailure."""
@@ -112,8 +142,7 @@ async def run_review_job(payload: ReviewJobPayload) -> str:
         return await _run(payload, settings, usage_handler)
     except Exception as exc:
         failure = classify(exc)
-        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
-            invalidate_installation_token(payload.installation_id)
+        _invalidate_on_401(exc, payload.installation_id)
         # No traceback and no exception text: both can carry URLs or secrets.
         logger.warning(
             "job_attempt_failed",
@@ -152,23 +181,62 @@ async def _checkpointer_scope(settings: Settings) -> AsyncIterator[Any]:
         yield saver
 
 
+async def _post_pending_comment(
+    run_id: str,
+    installation_id: int,
+    repo_full_name: str,
+    number: int,
+    held: int,
+    settings: Settings,
+) -> bool:
+    """Claim the right to announce the hold, then post it. If the POST fails the claim is given
+    back, so the next sweep tries again: a held review nobody was told about is a lost review.
+    True = posted (or someone else already did)."""
+    if not _critical(lambda s: runs.claim_pending_comment(s, run_id)):
+        return True
+    try:
+        owner, _, repo = repo_full_name.partition("/")
+        token = await get_installation_token(installation_id)
+        text = pending_comment(held, settings.held_severities)
+        await post_pr_comment(token, owner, repo, number, text)
+    except Exception as exc:
+        logger.warning("pending_comment_not_posted", error=type(exc).__name__)
+        _invalidate_on_401(exc, installation_id)
+        _critical(lambda s: runs.release_pending_comment(s, run_id))
+        return False
+    return True
+
+
 async def _announce_pending(payload: ReviewJobPayload, held: int, settings: Settings) -> str:
-    """The review is held. Record it and say so ONCE. Never raises after the hold is recorded:
-    a failed comment must not re-run the (paid) review."""
+    """The review is held. Record it and say so. Never raises after the hold is recorded:
+    a failed comment must not re-run the (paid) review; the sweep retries the comment."""
     run_id = payload.run_id
     if not _critical(
-        lambda s: runs.mark_awaiting(s, run_id, installation_id=payload.installation_id)
+        lambda s: runs.mark_awaiting(s, run_id, installation_id=payload.installation_id, held=held)
     ):
         return "superseded"  # a newer push replaced this run while it was reviewing
     logger.info("review_held", held=held)
-    try:
-        if _critical(lambda s: runs.claim_pending_comment(s, run_id)):
-            token = await get_installation_token(payload.installation_id)
-            text = pending_comment(held, settings.held_severities)
-            await post_pr_comment(token, payload.owner, payload.repo, payload.number, text)
-    except Exception as exc:
-        logger.warning("pending_comment_not_posted", error=type(exc).__name__)
+    run = _critical(lambda s: runs.get_run(s, run_id))
+    count = run.held_count if run is not None else held
+    await _post_pending_comment(
+        run_id, payload.installation_id, payload.repo_full_name, payload.number, count, settings
+    )
     return "pending"
+
+
+async def announce_unannounced_holds(settings: Settings) -> int:
+    """Housekeeping: re-send the 'pending' comment for held runs whose first attempt failed.
+    Returns how many were posted."""
+    if not settings.confirmation_enabled:
+        return 0
+    posted = 0
+    due = _critical(lambda s: runs.list_unannounced(s))
+    for run_id, repo_full_name, number, installation_id, held in due:
+        if await _post_pending_comment(
+            run_id, installation_id, repo_full_name, number, held, settings
+        ):
+            posted += 1
+    return posted
 
 
 async def _drop_superseded_holds(saver: Any, payload: ReviewJobPayload) -> None:
@@ -206,7 +274,7 @@ async def _run(
 
     parsed_files: dict[str, ParsedFile] = {}
     skipped: list[tuple[str, str]] = []
-    if len(files) >= settings.max_listed_pages * FILES_PER_PAGE:
+    if files.truncated:
         skipped.append(("(more files)", "PR has more files than the listing limit"))
     for changed in files:
         reason = skip_reason(changed.filename, changed.status) or changed.skip_reason
@@ -246,11 +314,26 @@ async def _run(
             pre_skipped=skipped,
         )
         if outcome.pending:
-            # Nothing is saved or posted yet: the held findings only count once confirmed.
+            # The held findings are neither saved nor posted until confirmed. The rest of the
+            # review is NOT held (ADR 0007, amended): it goes out now, once.
+            if outcome.findings:
+                _record(
+                    "findings",
+                    lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped),
+                )
+                summary, comments = _render(outcome, held=outcome.pending)
+                if await _post_once(payload, token, summary, comments) == "superseded":
+                    await delete_thread(saver, run_id)
+                    return "superseded"
             result = await _announce_pending(payload, outcome.pending, settings)
             if result == "superseded":
                 await delete_thread(saver, run_id)
             return result
+
+    if outcome.failed and not outcome.reviewed:
+        # Every file we tried to review failed: there is nothing to report. Retry later (and after
+        # the last attempt the PR gets the short failure notice) instead of posting an empty review.
+        raise JobFailure(MODEL, True, "every file failed review")
 
     _record("findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped))
     summary, comments = _render(outcome)
@@ -261,7 +344,12 @@ async def _run(
 
 
 async def _post_once(
-    payload: ReviewJobPayload, token: str, summary: str, comments: list[ReviewComment]
+    payload: ReviewJobPayload,
+    token: str,
+    summary: str,
+    comments: list[ReviewComment],
+    *,
+    held: bool = False,
 ) -> str:
     """Post the review unless it is stale or was already posted. Never posts twice."""
     run_id = payload.run_id
@@ -274,14 +362,15 @@ async def _post_once(
         return "superseded"
 
     run = _critical(lambda s: runs.get_run(s, run_id))
-    marker = review_marker(run_id)
-    if run is not None and run.posted_at is not None:
+    marker = review_marker(run_id, held=held)
+    done_at = None if run is None else (run.held_posted_at if held else run.posted_at)
+    if done_at is not None:
         return "already_posted"
     if await review_exists(
         token, payload.owner, payload.repo, payload.number, payload.head_sha, marker
     ):
         # A previous attempt posted, then died before recording it.
-        _critical(lambda s: runs.mark_posted(s, run_id))
+        _critical(lambda s: runs.mark_posted(s, run_id, held=held))
         logger.info("review_already_on_github")
         return "already_posted"
 
@@ -294,17 +383,27 @@ async def _post_once(
             raise
         # GitHub rejects the WHOLE review if one comment can't be placed. Never lose the review.
         logger.warning("inline_comments_rejected_posting_summary_only")
-        await post_review(*args, body, [])
-    _critical(lambda s: runs.mark_posted(s, run_id))
+        if await review_exists(*args, marker):  # re-check: never post a second review
+            _critical(lambda s: runs.mark_posted(s, run_id, held=held))
+            return "already_posted"
+        fallback = render_fallback_summary(summary, [(c.path, c.line, c.body) for c in comments])
+        await post_review(*args, f"{fallback}\n\n{marker}", [])
+    _critical(lambda s: runs.mark_posted(s, run_id, held=held))
     return "posted"
 
 
-def _render(outcome: ReviewOutcome) -> tuple[str, list[ReviewComment]]:
+def _render(outcome: ReviewOutcome, held: int = 0) -> tuple[str, list[ReviewComment]]:
     """Review text from an outcome. `outcome.skipped` already includes the pre-graph skips."""
     overflow = sum(reason == OVER_CAP for _, reason in outcome.dropped)
     merged = sum(reason == MERGED for _, reason in outcome.dropped)
     summary = render_summary(
-        len(outcome.reviewed), outcome.findings, outcome.skipped, overflow=overflow, merged=merged
+        len(outcome.reviewed),
+        outcome.findings,
+        outcome.skipped,
+        overflow=overflow,
+        merged=merged,
+        failed=len(outcome.failed),
+        held=held,
     )
     comments = [
         ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
@@ -324,13 +423,33 @@ async def post_failure_notice(payload: ReviewJobPayload) -> None:
         token = await get_installation_token(payload.installation_id)
         await post_pr_comment(token, payload.owner, payload.repo, payload.number, FAILURE_COMMENT)
     except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
         logger.warning("failure_notice_not_posted", error=type(exc).__name__)
 
 
 async def run_confirm_job(payload: ConfirmJobPayload) -> str:
+    try:
+        return await _confirm(payload)
+    except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
+        raise
+
+
+async def _confirm(payload: ConfirmJobPayload) -> str:
     run_id = payload.run_id
     structlog.contextvars.bind_contextvars(run_id=run_id, pr_number=payload.number)
     settings = get_settings()
+
+    # 0. Nobody confirms their own review, whatever their permission (the author is the party
+    # the findings are about). Checked before any permission lookup.
+    if payload.author_login is not None and payload.author_login.lower() == (
+        payload.commenter_login.lower()
+    ):
+        logger.info("confirm_ignored", reason="author")
+        await _refuse(
+            payload, await get_installation_token(payload.installation_id), AUTHOR_COMMENT
+        )
+        return "ignored"
 
     # 1. Permission, asked of GitHub (the comment's own author_association is only a hint).
     token = await get_installation_token(payload.installation_id)
@@ -339,6 +458,7 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
     )
     if not is_allowed(permission):
         logger.info("confirm_ignored", reason="not_allowed")
+        await _refuse(payload, token, NOT_ALLOWED_COMMENT)
         return "ignored"  # not an error: a retry would not change the answer
 
     # 2. Claim: awaiting_confirmation -> confirming, atomically. Losing is not a failure.
@@ -363,7 +483,14 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
     )
 
     # 3. A retry after a post that succeeded: do not resume a finished thread.
-    if run.posted_at is not None:
+    # Two shapes of held run: the rest of the review went out BEFORE the hold was recorded
+    # (10.8: posted_at < awaiting_since), or nothing did and the whole review waits for /confirm.
+    follow_up = (
+        run.posted_at is not None
+        and run.awaiting_since is not None
+        and run.posted_at < run.awaiting_since
+    )
+    if (run.held_posted_at if follow_up else run.posted_at) is not None:
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
         async with open_checkpointer(settings) as saver:
             await delete_thread(saver, run_id)
@@ -385,9 +512,18 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
             "findings", lambda s: runs.save_findings(s, run_id, outcome.findings, outcome.dropped)
         )
 
-        # 5. Render, 6. post once (re-checks head SHA and the marker)
-        summary, comments = _render(outcome)
-        result = await _post_once(review, token, summary, comments)
+        # 5. Render, 6. post once (re-checks head SHA and the marker). When the rest of the review
+        # already went out (10.8), only the confirmed findings are posted, as a follow-up review.
+        if follow_up:
+            confirmed = [f for f in outcome.findings if f.severity in settings.held_severities]
+            summary = render_confirmed_summary(confirmed)
+            comments = [
+                ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
+                for f in confirmed
+            ]
+        else:
+            summary, comments = _render(outcome)
+        result = await _post_once(review, token, summary, comments, held=follow_up)
 
         # 7. Finish. _post_once already marked a superseded run.
         if result != "superseded":
@@ -439,7 +575,27 @@ async def expire_pending_reviews(
                 token = await get_installation_token(installation_id)
                 await post_pr_comment(token, owner, repo, number, EXPIRED_COMMENT)
         except Exception as exc:
+            if installation_id is not None:
+                _invalidate_on_401(exc, installation_id)
             logger.warning("expire_pending_failed", run_id=run_id, error=type(exc).__name__)
         finally:
             structlog.contextvars.unbind_contextvars("run_id")
     return expired
+
+
+async def purge_closed_checkpoints(
+    settings: Settings,
+    open_saver: Callable[[Settings], AbstractAsyncContextManager[Any]] = open_checkpointer,
+) -> int:
+    """Delete the checkpoints of held runs whose PR closed (they hold source code).
+    Retried on the next sweep when a deletion fails. Returns how many were purged."""
+    if not settings.confirmation_enabled:
+        return 0
+    ids = _critical(lambda s: runs.list_checkpoints_to_purge(s))
+    purged = 0
+    for run_id in ids:
+        async with open_saver(settings) as saver:
+            if await delete_thread(saver, run_id):
+                _critical(lambda s, rid=run_id: runs.mark_checkpoint_purged(s, rid))  # type: ignore[misc]
+                purged += 1
+    return purged

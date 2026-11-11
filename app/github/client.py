@@ -12,6 +12,12 @@ MAX_REVIEW_PAGES = 5
 MAX_PAGES = 30
 
 
+class FileListing(list["ChangedFile"]):
+    """The listed files, plus whether GitHub had MORE that we did not fetch (page cap)."""
+
+    truncated: bool = False
+
+
 class ChangedFile(BaseModel):
     """One file of a PR. Only the fields we use; everything else GitHub sends is ignored."""
 
@@ -48,13 +54,13 @@ async def post_pr_comment(token: str, owner: str, repo: str, number: int, body: 
 
 async def list_pr_files(
     token: str, owner: str, repo: str, number: int, max_pages: int = MAX_PAGES
-) -> list[ChangedFile]:
+) -> FileListing:
     """All changed files of a PR, following the Link header across pages.
 
     Files without a patch are returned too; check `skip_reason`. `max_pages` bounds how much a
     huge PR can make us fetch (it is attacker-controlled size).
     """
-    files: list[ChangedFile] = []
+    files = FileListing()
     async with github_client() as client:
         # The first request carries params; "next" URLs are absolute and already have them.
         url = f"/repos/{owner}/{repo}/pulls/{number}/files"
@@ -67,6 +73,8 @@ async def list_pr_files(
                 break
             url = next_url
             params = None
+        else:
+            files.truncated = True  # the page cap ended the loop while GitHub had a next page
     return files
 
 
@@ -114,20 +122,30 @@ async def get_pr_head_sha(token: str, owner: str, repo: str, number: int) -> str
 async def review_exists(
     token: str, owner: str, repo: str, number: int, commit_id: str, marker: str
 ) -> bool:
-    """True if a review on this commit already carries our marker (an earlier attempt posted it)."""
+    """True if a review on this commit already carries our marker (an earlier attempt posted it).
+
+    GitHub lists reviews oldest first, so on a PR with many reviews ours is near the END: jump to
+    the last page and walk backwards (at most MAX_REVIEW_PAGES pages). Without a `last` link
+    (a short list) walk forward as usual.
+    """
     async with github_client() as client:
         url = f"/repos/{owner}/{repo}/pulls/{number}/reviews"
         params: dict[str, int] | None = {"per_page": FILES_PER_PAGE}
+        response = await get_with_retry(client, url, params=params, headers=_headers(token))
+        direction = "next"
+        last_url = response.links.get("last", {}).get("url")
+        if last_url is not None and response.links.get("next") is not None:
+            response = await get_with_retry(client, last_url, headers=_headers(token))
+            direction = "prev"
         for _ in range(MAX_REVIEW_PAGES):
-            response = await get_with_retry(client, url, params=params, headers=_headers(token))
             for review in response.json():
                 body = review.get("body") or ""
                 if review.get("commit_id") == commit_id and marker in body:
                     return True
-            next_url = response.links.get("next", {}).get("url")
-            if next_url is None:
+            step_url = response.links.get(direction, {}).get("url")
+            if step_url is None:
                 return False
-            url, params = next_url, None
+            response = await get_with_retry(client, step_url, headers=_headers(token))
     return False
 
 

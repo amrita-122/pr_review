@@ -30,11 +30,14 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import runs
 from app.db.models import Job
+from app.db.retention import prune_old_rows
 from app.db.session import get_session
 from app.jobs.errors import INTERNAL, JobFailure, classify
 from app.jobs.handlers import (
+    announce_unannounced_holds,
     expire_pending_reviews,
     post_failure_notice,
+    purge_closed_checkpoints,
     run_confirm_job,
     run_review_job,
 )
@@ -47,6 +50,7 @@ logger = structlog.get_logger()
 
 MAX_BACKOFF_SECONDS = 600.0
 EXPIRY_CHECK_SECONDS = 60.0
+PRUNE_CHECK_SECONDS = 3600.0
 
 
 @dataclass(frozen=True)
@@ -305,13 +309,23 @@ async def run_worker(settings: Settings, stop: asyncio.Event, *, once: bool = Fa
     worker_id = f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
     logger.info("worker_started", worker_id=worker_id)
     next_expiry_check = 0.0
+    next_prune = 0.0
     while not stop.is_set():
         if time.monotonic() >= next_expiry_check:  # held reviews: once a minute is plenty
             next_expiry_check = time.monotonic() + EXPIRY_CHECK_SECONDS
             try:
                 await expire_pending_reviews(settings)
+                await purge_closed_checkpoints(settings)
+                await announce_unannounced_holds(settings)
             except Exception as exc:  # housekeeping must never stop the worker
                 logger.warning("expiry_check_failed", error=type(exc).__name__)
+        if time.monotonic() >= next_prune:  # old rows: once an hour is plenty
+            next_prune = time.monotonic() + PRUNE_CHECK_SECONDS
+            try:
+                with get_session() as session:
+                    prune_old_rows(session, utcnow(), settings)
+            except Exception as exc:  # housekeeping must never stop the worker
+                logger.warning("prune_failed", error=type(exc).__name__)
         try:
             with get_session() as session:
                 gave_up = requeue_stale(session, utcnow(), settings.job_lease_seconds)

@@ -7,6 +7,7 @@ from app.db.models import Job, ReviewRun, WebhookDelivery
 from tests.test_webhook_signatures import (
     FIXTURE_PATH,
     TEST_SECRET,
+    body_with_action,
     client,
     make_signature,
     post_signed,
@@ -71,3 +72,28 @@ def test_missing_delivery_header_is_400() -> None:
         },
     )
     assert response.status_code == 400
+
+
+def test_concurrent_deliveries_for_one_commit_do_not_return_a_500(
+    monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    """10.6: both requests read 'no run yet'; the unique key rejects the second insert.
+    The second must be a quiet duplicate (not a 500) and the first review must stay queued."""
+    from app.db import runs
+
+    first = post_signed(body_with_action("opened"), delivery="d-1")
+    assert first.json() == {"status": "accepted"}
+
+    monkeypatch.setattr(runs, "get_by_key", lambda *a, **k: None)  # the stale read of the race
+    second = post_signed(body_with_action("synchronize"), delivery="d-2")
+    assert (second.status_code, second.json()) == (202, {"status": "duplicate"})
+
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(ReviewRun)) == 1
+    assert db_session.scalar(select(func.count()).select_from(Job)) == 1
+    run = db_session.scalars(select(ReviewRun)).one()
+    assert run.status == runs.QUEUED  # the winner's run was not superseded by the loser's rollback
+    # the loser's delivery id is remembered, so GitHub redelivering it is a plain duplicate
+    assert post_signed(body_with_action("synchronize"), delivery="d-2").json() == {
+        "status": "duplicate"
+    }

@@ -8,10 +8,11 @@ Callers decide which writes are critical (let them raise) and which are bookkeep
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import FindingRow, ReviewRun
+from app.db.models import ConfirmDenial, FindingRow, ReviewRun
 from app.review.schemas import Finding
 
 MAX_ERROR_CHARS = 500
@@ -51,6 +52,7 @@ def create_queued(
     head_sha: str,
     prompt_version: str,
     model: str,
+    head_updated_at: datetime | None = None,
 ) -> None:
     """Add (not commit) a queued run: the caller commits it together with the job."""
     session.add(
@@ -59,6 +61,7 @@ def create_queued(
             repo=repo,
             pr_number=pr_number,
             head_sha=head_sha,
+            head_updated_at=head_updated_at,
             status=QUEUED,
             prompt_version=prompt_version,
             model=model,
@@ -66,16 +69,54 @@ def create_queued(
     )
 
 
-def supersede_older(session: Session, repo: str, pr_number: int, keep_sha: str) -> int:
-    """A newer push replaces every in-flight run for other commits of the same PR (no commit)."""
+def has_newer_run(
+    session: Session, repo: str, pr_number: int, head_sha: str, updated_at: datetime | None
+) -> bool:
+    """True if this PR already has a run for ANOTHER commit that GitHub stamped strictly later.
+
+    Then the incoming event is a late delivery of an older push and must not replace anything.
+    Equal timestamps (two pushes in the same second) are not "newer": see supersede_older.
+    """
+    if updated_at is None:
+        return False
+    return (
+        session.scalars(
+            select(ReviewRun.id)
+            .where(
+                ReviewRun.repo == repo,
+                ReviewRun.pr_number == pr_number,
+                ReviewRun.head_sha != head_sha,
+                ReviewRun.head_updated_at > updated_at,
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
+def supersede_older(
+    session: Session, repo: str, pr_number: int, keep_sha: str, updated_at: datetime | None = None
+) -> int:
+    """A newer push replaces in-flight runs of OLDER commits of the same PR (no commit).
+
+    A run is older when its timestamp is strictly earlier than the incoming one; runs with no
+    timestamp (created before the column existed) are treated as older. Equal timestamps (two
+    pushes in the same second) supersede nothing: order is unknowable, so both run and the
+    stale one is dropped at post time, when GitHub is asked for the PR's current head.
+    """
+    conditions = [
+        ReviewRun.repo == repo,
+        ReviewRun.pr_number == pr_number,
+        ReviewRun.head_sha != keep_sha,
+        ReviewRun.status.in_(IN_FLIGHT),
+    ]
+    if updated_at is not None:
+        conditions.append(
+            or_(ReviewRun.head_updated_at.is_(None), ReviewRun.head_updated_at < updated_at)
+        )
     result = session.execute(
         update(ReviewRun)
-        .where(
-            ReviewRun.repo == repo,
-            ReviewRun.pr_number == pr_number,
-            ReviewRun.head_sha != keep_sha,
-            ReviewRun.status.in_(IN_FLIGHT),
-        )
+        .where(*conditions)
         .values(status=SUPERSEDED, finished_at=datetime.now(UTC))
     )
     return int(result.rowcount)  # type: ignore[attr-defined]
@@ -117,10 +158,14 @@ def set_retrying(session: Session, run_id: str, *, error: str, reason: str) -> N
     session.commit()
 
 
-def mark_posted(session: Session, run_id: str) -> None:
+def mark_posted(session: Session, run_id: str, *, held: bool = False) -> None:
+    """Record a posted review. held=True is the follow-up review of the confirmed findings."""
     run = session.get(ReviewRun, run_id)
     if run is not None:
-        run.posted_at = datetime.now(UTC)
+        if held:
+            run.held_posted_at = datetime.now(UTC)
+        else:
+            run.posted_at = datetime.now(UTC)
         session.commit()
 
 
@@ -198,17 +243,22 @@ def save_findings(
 # --- Phase 8: human confirmation ------------------------------------------------------------
 
 
-def mark_awaiting(session: Session, run_id: str, *, installation_id: int) -> bool:
+def mark_awaiting(
+    session: Session, run_id: str, *, installation_id: int, held: int | None = None
+) -> bool:
     """running -> awaiting_confirmation. False if the run is gone or no longer running
     (a superseded run must not become pending)."""
+    values: dict[str, object] = {
+        "status": AWAITING_CONFIRMATION,
+        "installation_id": installation_id,
+        "awaiting_since": datetime.now(UTC),
+    }
+    if held:  # a retry that does not know the count must not erase it
+        values["held_count"] = held
     result = session.execute(
         update(ReviewRun)
         .where(ReviewRun.id == run_id, ReviewRun.status.in_((RUNNING, AWAITING_CONFIRMATION)))
-        .values(
-            status=AWAITING_CONFIRMATION,
-            installation_id=installation_id,
-            awaiting_since=datetime.now(UTC),
-        )
+        .values(**values)
     )
     session.commit()
     return bool(result.rowcount)  # type: ignore[attr-defined]
@@ -263,6 +313,28 @@ def claim_pending_comment(session: Session, run_id: str) -> bool:
     return bool(result.rowcount)  # type: ignore[attr-defined]
 
 
+def release_pending_comment(session: Session, run_id: str) -> None:
+    """The 'pending' comment could not be posted: give the right back so it is tried again."""
+    session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(pending_comment_posted=False)
+    )
+    session.commit()
+
+
+def list_unannounced(session: Session) -> list[tuple[str, str, int, int, int]]:
+    """Held runs nobody has been told about: (run_id, repo, pr_number, installation_id, held)."""
+    rows = session.scalars(
+        select(ReviewRun).where(
+            ReviewRun.status == AWAITING_CONFIRMATION,
+            ReviewRun.pending_comment_posted.is_(False),
+            ReviewRun.installation_id.is_not(None),
+        )
+    ).all()
+    return [(r.id, r.repo, r.pr_number, int(r.installation_id or 0), r.held_count) for r in rows]
+
+
 def expire_run(session: Session, run_id: str) -> bool:
     """awaiting_confirmation -> expired, atomically (a confirm that won the race keeps its run)."""
     result = session.execute(
@@ -312,3 +384,79 @@ def list_superseded_holds(session: Session, repo: str, pr_number: int) -> list[s
             )
         ).all()
     )
+
+
+# --- PR closed / merged ---------------------------------------------------------------------
+
+
+def close_pr_runs(
+    session: Session, repo: str, pr_number: int, updated_at: datetime | None = None
+) -> tuple[int, int]:
+    """The PR was closed or merged (no commit). Returns (held_expired, in_progress_superseded).
+
+    - A held run becomes `expired` QUIETLY (no comment on a dead PR) and its checkpoint is queued
+      for deletion. Nobody can /confirm it any more: confirmation only claims held runs.
+    - A queued/running run is superseded: it must not spend more money or post.
+    - A run stamped LATER than this event belongs to a push or reopen that the close preceded
+      (deliveries can arrive out of order): it is left alone.
+    - A `confirming` run is already posting; leave it.
+    """
+    conditions = [
+        ReviewRun.repo == repo,
+        ReviewRun.pr_number == pr_number,
+    ]
+    if updated_at is not None:
+        conditions.append(
+            or_(ReviewRun.head_updated_at.is_(None), ReviewRun.head_updated_at <= updated_at)
+        )
+    now = datetime.now(UTC)
+    held = session.execute(
+        update(ReviewRun)
+        .where(*conditions, ReviewRun.status == AWAITING_CONFIRMATION)
+        .values(status=EXPIRED, finished_at=now, expired_comment_posted=True, purge_checkpoint=True)
+    )
+    running = session.execute(
+        update(ReviewRun)
+        .where(*conditions, ReviewRun.status.in_((QUEUED, RUNNING)))
+        .values(status=SUPERSEDED, finished_at=now)
+    )
+    return int(held.rowcount), int(running.rowcount)  # type: ignore[attr-defined]
+
+
+def list_checkpoints_to_purge(session: Session) -> list[str]:
+    return list(
+        session.scalars(
+            select(ReviewRun.id).where(
+                ReviewRun.purge_checkpoint.is_(True), ReviewRun.status == EXPIRED
+            )
+        ).all()
+    )
+
+
+def mark_checkpoint_purged(session: Session, run_id: str) -> None:
+    session.execute(update(ReviewRun).where(ReviewRun.id == run_id).values(purge_checkpoint=False))
+    session.commit()
+
+
+# --- /confirm refusals ------------------------------------------------------------------------
+
+
+def is_denied(session: Session, run_id: str, login: str) -> bool:
+    return session.get(ConfirmDenial, (run_id, login)) is not None
+
+
+def denial_count(session: Session, run_id: str) -> int:
+    return len(
+        list(session.scalars(select(ConfirmDenial.login).where(ConfirmDenial.run_id == run_id)))
+    )
+
+
+def record_denial(session: Session, run_id: str, login: str) -> bool:
+    """True if this login was newly refused (False: already on record)."""
+    session.add(ConfirmDenial(run_id=run_id, login=login))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        return False
+    return True

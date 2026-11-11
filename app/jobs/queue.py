@@ -22,8 +22,13 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
     Returns False when nothing needs to run (the same commit is already queued, running or done).
     """
     repo = f"{event.owner}/{event.repo}"
+    stamp = event.head_updated_at
+    if runs.has_newer_run(session, repo, event.number, event.head_sha, stamp):
+        # A late delivery of an older push: the newer commit's run must stay alive.
+        logger.info("stale_push_ignored", repo=repo, pr_number=event.number)
+        return False
     # A newer push replaces older in-flight runs of this PR, whatever happens to this commit.
-    superseded = runs.supersede_older(session, repo, event.number, event.head_sha)
+    superseded = runs.supersede_older(session, repo, event.number, event.head_sha, stamp)
     if superseded:
         logger.info("runs_superseded", count=superseded, repo=repo, pr_number=event.number)
 
@@ -38,6 +43,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             head_sha=event.head_sha,
             prompt_version=settings.prompt_version,
             model=settings.model_review,
+            head_updated_at=stamp,
         )
     elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
         return False
@@ -48,6 +54,7 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
         existing.failure_reason = None
         existing.finished_at = None
         existing.failure_comment_posted = False
+        existing.head_updated_at = stamp
 
     payload = ReviewJobPayload.from_event(event, run_id)
     session.add(

@@ -1,6 +1,11 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+import structlog
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+logger = structlog.get_logger()
+
+MAX_TITLE_CHARS = 200
 
 
 class Severity(StrEnum):
@@ -57,7 +62,7 @@ class Finding(BaseModel):
     line: int = Field(ge=1)
     severity: Severity
     category: Category
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
     rationale: str = Field(min_length=1)
     suggestion: str | None = None
 
@@ -73,4 +78,31 @@ class ReviewFinding(Finding):
 
 
 class ReviewResult(BaseModel):
+    """What the model returns for one file.
+
+    Findings are parsed ONE AT A TIME: a single malformed finding (bad severity, line 0, empty
+    text) is skipped and logged, it does not throw away the file's other findings. A title that is
+    merely too long is shortened (the output policy still checks the shortened text).
+    """
+
     findings: list[Finding] = Field(default_factory=list)
+
+    @field_validator("findings", mode="before")
+    @classmethod
+    def _parse_each(cls, items: object) -> object:
+        if not isinstance(items, list):
+            return items  # wrong shape altogether: a real validation error (the caller retries)
+        parsed: list[Finding] = []
+        skipped = 0
+        for item in items:
+            if isinstance(item, dict):
+                title = item.get("title")
+                if isinstance(title, str) and len(title) > MAX_TITLE_CHARS:
+                    item = {**item, "title": title[: MAX_TITLE_CHARS - 3] + "..."}
+            try:
+                parsed.append(Finding.model_validate(item))
+            except ValidationError:
+                skipped += 1
+        if skipped:
+            logger.warning("malformed_findings_skipped", skipped=skipped, kept=len(parsed))
+        return parsed

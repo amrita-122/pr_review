@@ -128,3 +128,24 @@ def test_summary_groups_by_category_and_states_overflow_and_merges() -> None:
 def test_summary_stays_quiet_when_nothing_was_cut() -> None:
     text = render_summary(1, [_f(1)], [])
     assert "not posted" not in text and "merged" not in text and "By category" not in text
+
+
+def test_summary_says_no_findings_only_when_files_were_reviewed_and_none_failed() -> None:
+    assert "No findings." in render_summary(2, [], [])
+
+
+def test_summary_with_zero_reviewed_files_is_not_an_all_clear() -> None:
+    text = render_summary(0, [], [("a.py", "diff too large (9 chars)")])
+    assert "No findings" not in text and "No files were reviewed" in text
+
+
+def test_summary_with_failed_files_is_not_clean() -> None:
+    text = render_summary(1, [], [("b.py", "security review failed")], failed=1)
+    assert "No findings." not in text
+    assert "No findings in the files that were reviewed" in text
+    assert "1 file(s) could NOT be reviewed" in text
+
+
+def test_summary_with_findings_still_warns_about_failed_files() -> None:
+    text = render_summary(1, [_f(1)], [], failed=2)
+    assert "1 finding(s)" in text and "2 file(s) could NOT be reviewed" in text

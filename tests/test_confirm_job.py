@@ -293,3 +293,68 @@ async def test_worker_runs_a_queued_confirm_job(
     assert gh.reviews.call_count == 1
     assert db_session.scalars(select(Job)).one().status == "done"
     assert run_row(db_session).status == runs.OK
+
+
+# --- 10.10: hardening --------------------------------------------------------------------------
+
+
+def comment_count(gh: Pipeline) -> int:
+    return gh.comments.call_count
+
+
+@respx.mock
+async def test_the_pr_author_cannot_confirm_their_own_review_even_with_admin_rights(
+    db_session: Session, saver: Saver
+) -> None:
+    gh = Pipeline(EVENT)
+    perm = permission("admin")
+    await hold_review(db_session, saver)
+
+    payload = confirm("maintainer").model_copy(update={"author_login": "Maintainer"})
+    assert await run_confirm_job(payload) == "ignored"
+
+    assert gh.reviews.call_count == 0 and perm.call_count == 0  # not even a permission lookup
+    assert run_row(db_session).status == runs.AWAITING_CONFIRMATION
+    assert comment_count(gh) == 1
+    assert handlers.AUTHOR_COMMENT.encode() in gh.comments.calls[0].request.content
+
+
+@respx.mock
+async def test_an_unprivileged_user_gets_one_short_reply_not_silence_and_not_two(
+    db_session: Session, saver: Saver
+) -> None:
+    gh = Pipeline(EVENT)
+    permission("read")
+    await hold_review(db_session, saver)
+
+    assert await run_confirm_job(confirm()) == "ignored"
+    assert await run_confirm_job(confirm()) == "ignored"  # e.g. a redelivery that slipped through
+
+    assert comment_count(gh) == 1
+    assert handlers.NOT_ALLOWED_COMMENT.encode() in gh.comments.calls[0].request.content
+    assert runs.is_denied(db_session, RUN_ID, "maintainer")
+
+
+@respx.mock
+async def test_replies_stop_after_a_few_different_people_are_refused(
+    db_session: Session, saver: Saver
+) -> None:
+    gh = Pipeline(EVENT)
+    await hold_review(db_session, saver)
+    for n in range(6):
+        respx.get(PERMISSION_URL.replace("maintainer", f"user{n}")).mock(
+            return_value=httpx.Response(200, json={"permission": "read"})
+        )
+        await run_confirm_job(confirm(f"user{n}"))
+    assert comment_count(gh) == handlers.MAX_REFUSAL_REPLIES_PER_RUN
+    assert runs.denial_count(db_session, RUN_ID) == 6
+
+
+@respx.mock
+async def test_a_failed_refusal_reply_changes_nothing(db_session: Session, saver: Saver) -> None:
+    gh = Pipeline(EVENT)
+    gh.comments.mock(return_value=httpx.Response(500))
+    permission("none")
+    await hold_review(db_session, saver)
+    assert await run_confirm_job(confirm()) == "ignored"
+    assert run_row(db_session).status == runs.AWAITING_CONFIRMATION

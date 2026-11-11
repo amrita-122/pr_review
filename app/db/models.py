@@ -47,6 +47,8 @@ class ReviewRun(Base):
     __tablename__ = "review_runs"
     __table_args__ = (
         UniqueConstraint("repo", "pr_number", "head_sha", name="uq_review_runs_pr_head"),
+        # list_expired / list_unannounced / confirm lookups all filter on these two columns
+        Index("ix_review_runs_status_awaiting_since", "status", "awaiting_since"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -56,6 +58,8 @@ class ReviewRun(Base):
     # queued | running | ok | failed | superseded (a newer push replaced it; it must not post)
     # | awaiting_confirmation | confirming | expired (Phase 8)
     status: Mapped[str] = mapped_column(String)
+    # The webhook's pull_request.updated_at for this head: orders pushes that arrive out of order.
+    head_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String)
     model: Mapped[str] = mapped_column(String)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -68,6 +72,8 @@ class ReviewRun(Base):
         String, nullable=True
     )  # timeout|github|model|internal
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The second review, posted after /confirm, when the non-held findings already went out (10.8).
+    held_posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_comment_posted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
     )
@@ -80,6 +86,10 @@ class ReviewRun(Base):
     expired_comment_posted: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
     )
+    # Set when the PR closed while this run was held: its checkpoint (it holds source code) must go.
+    # How many findings are held. Kept so the 'pending' comment can be re-sent after a failed POST.
+    held_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    purge_checkpoint: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     confirmed_by: Mapped[str | None] = mapped_column(String, nullable=True)  # GitHub login
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -98,6 +108,17 @@ class FindingRow(Base):
     title: Mapped[str] = mapped_column(String)
     posted: Mapped[bool] = mapped_column(Boolean)
     drop_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class ConfirmDenial(Base):
+    """A login that tried /confirm on a held run and was refused. One row per (run, login): the
+    webhook ignores repeats for free, so comment spam costs no permission lookups."""
+
+    __tablename__ = "confirm_denials"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("review_runs.id"), primary_key=True)
+    login: Mapped[str] = mapped_column(String, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Job(Base):

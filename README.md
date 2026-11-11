@@ -98,6 +98,10 @@ More detail, the data model and trust boundaries: [docs/ARCHITECTURE.md](docs/AR
 - **No per-author rate limit.** A push storm is bounded by superseding older runs, not by a quota.
 - **`/confirm` from a non-maintainer** was verified by unit tests only, not with a real second account.
 - **Triage savings** are unmeasured for PRs with many large docs or test files.
+- **Findings are public on public repos** (even after `/confirm`). Do not install the App on public repos with real
+  code until Phase 10 branch 3 (private delivery, [ADR 0008](docs/decisions/0008-private-delivery-for-public-repos.md)).
+- **Known bugs, fixed in Phase 10** (see TASKS.md): a late webhook can lose the newest review; a review can say
+  "No findings." when files failed; closed PRs and drafts are not handled; old comments are never corrected.
 
 Full list: [docs/SECURITY.md](docs/SECURITY.md#residual-risks).
 

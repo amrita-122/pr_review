@@ -1,13 +1,15 @@
 import hashlib
 import hmac
 import re
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
 
 HANDLED_EVENT = "pull_request"
 ISSUE_COMMENT_EVENT = "issue_comment"
-HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize"})
+HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize", "ready_for_review"})
+CLOSED_ACTION = "closed"  # merged or not: either way the PR is finished
 CONFIRM_COMMAND = "/confirm"
 # A human GitHub login. It ends up in a URL path (/collaborators/{login}/permission).
 LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
@@ -32,6 +34,9 @@ class Head(BaseModel):
 
 class PullRequest(BaseModel):
     head: Head
+    # When GitHub last changed this PR. Used only to order out-of-order deliveries of pushes.
+    updated_at: datetime | None = None
+    draft: bool = False  # a draft is work in progress: reviewed only if REVIEW_DRAFTS is on
 
 
 class PullRequestEvent(BaseModel):
@@ -59,6 +64,14 @@ class PullRequestEvent(BaseModel):
     def head_sha(self) -> str:
         return self.pull_request.head.sha
 
+    @property
+    def is_draft(self) -> bool:
+        return self.pull_request.draft
+
+    @property
+    def head_updated_at(self) -> datetime | None:
+        return self.pull_request.updated_at
+
 
 class CommentUser(BaseModel):
     # Not pattern-checked here: bot logins look like "app[bot]" and must still parse (they are
@@ -75,6 +88,7 @@ class Comment(BaseModel):
 
 class IssueRef(BaseModel):
     number: int
+    user: CommentUser | None = None  # the author of the PR (a PR is an issue)
     # Only present when the comment is on a PR. Plain issues omit it.
     pull_request: dict[str, Any] | None = None
 
@@ -107,6 +121,10 @@ class IssueCommentEvent(BaseModel):
     @property
     def login(self) -> str:
         return self.comment.user.login
+
+    @property
+    def author_login(self) -> str | None:
+        return self.issue.user.login if self.issue.user is not None else None
 
     @property
     def is_confirm_request(self) -> bool:

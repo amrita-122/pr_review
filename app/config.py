@@ -1,11 +1,16 @@
+import re
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.review.cost import Prices, PriceTable
 from app.review.schemas import Severity
+
+_PROMPT_DIR = Path(__file__).parent / "review" / "prompts"
+_PROMPT_NAME = re.compile(r"[a-z]+_v\d+")  # also keeps "../x" out of a file path
 
 
 class Settings(BaseSettings):
@@ -23,6 +28,9 @@ class Settings(BaseSettings):
     max_output_tokens: int = 2048  # per model call; bounds output spend and runaway generations
     max_findings_per_file: int = 10
     max_comments_per_review: int = 25
+    retention_deliveries_days: int = 30  # webhook_deliveries older than this are deleted
+    retention_jobs_days: int = 14  # finished (done/failed) jobs older than this are deleted
+    max_webhook_body_bytes: int = 2_000_000  # larger bodies are refused before the HMAC
     max_listed_pages: int = 3  # pages of 100 files fetched from GitHub; the rest are not listed
     # Job queue (Phase 6). The job deadline must stay below the lease or a live job is reaped.
     job_max_attempts: int = 3
@@ -48,6 +56,7 @@ class Settings(BaseSettings):
     quality_prompt_version: str = "quality_v2"
     # Which review agents run, comma separated: security, quality.
     enabled_agents: str = "security,quality"
+    review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False
     confirm_ttl_hours: float = 72.0
@@ -101,6 +110,24 @@ class Settings(BaseSettings):
             if url.startswith(prefix):
                 return "postgresql+psycopg://" + url[len(prefix) :]
         return url
+
+    @model_validator(mode="after")
+    def _validate_at_startup(self) -> "Settings":
+        """A typo in ENABLED_AGENTS, CONFIRM_SEVERITIES or a prompt version must stop the app when
+        it starts, not fail every review (or worse, silently review with the wrong agents)."""
+        _ = self.agent_names
+        _ = self.held_severities
+        versions = {"PROMPT_VERSION": self.prompt_version}
+        if "quality" in self.agent_names:
+            versions["QUALITY_PROMPT_VERSION"] = self.quality_prompt_version
+        if self.triage_enabled:
+            versions["TRIAGE_PROMPT_VERSION"] = self.triage_prompt_version
+        for name, version in versions.items():
+            if not _PROMPT_NAME.fullmatch(version) or not (_PROMPT_DIR / f"{version}.md").is_file():
+                raise ValueError(f"{name}={version!r} does not match a file in app/review/prompts")
+        if self.confirm_ttl_hours <= 0:
+            raise ValueError("CONFIRM_TTL_HOURS must be positive")
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 

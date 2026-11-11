@@ -15,7 +15,7 @@ from app.diff.parse import ParsedFile
 from app.review.aggregate import OVER_CAP, SEVERITY_RANK, aggregate
 from app.review.llm import Reviewer, reviewer_key
 from app.review.schemas import Agent, Finding, ReviewFinding, Severity
-from app.review.triage import Risk, Triager
+from app.review.triage import Risk, Triager, rule_risk
 from app.review.validate import Dropped, partition_findings
 
 logger = structlog.get_logger()
@@ -49,9 +49,11 @@ class ReviewOutcome:
     findings: list[Finding]  # validated: safe to post
     reviewed: dict[str, ParsedFile]  # files the model actually reviewed
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
+    failed: list[str] = field(default_factory=list)  # files whose review step failed (unique)
     dropped: list[Dropped] = field(default_factory=list)  # validator drops, with reason
     raw_count: int = 0  # findings the model produced, before validation
-    pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post
+    pending: int = 0  # held findings waiting for a maintainer. >0 means: do NOT post those
+    held: list[Finding] = field(default_factory=list)  # the held findings themselves (in memory)
     risk: dict[str, str] = field(
         default_factory=dict
     )  # triage verdict per file (empty = no triage)
@@ -81,7 +83,13 @@ def _prepare(limits: ReviewLimits) -> Any:  # node callable; langgraph's typing 
         to_review: dict[str, ParsedFile] = {}
         skipped: list[tuple[str, str]] = []
         total = 0
-        for path, parsed in state["files"].items():
+        # Risk first, API order second (the sort is stable). The caps below cut from the END, so
+        # padding a PR with big harmless files cannot push the risky file out of the review.
+        rank = {"high": 0, None: 1, "low": 2}
+        ordered = sorted(
+            state["files"].items(), key=lambda item: rank[rule_risk(item[0], item[1].numbered)]
+        )
+        for path, parsed in ordered:
             size = len(parsed.numbered)
             if len(to_review) >= limits.max_files:
                 skipped.append((path, f"over the {limits.max_files}-file limit"))
@@ -232,18 +240,29 @@ def _held_count(validated: list[Finding], hold_severities: frozenset[Severity]) 
     return sum(f.severity in hold_severities for f in validated)
 
 
-def _to_outcome(values: Mapping[str, Any], pending: int) -> ReviewOutcome:
+def _to_outcome(
+    values: Mapping[str, Any], pending: int, hold_severities: frozenset[Severity] = frozenset()
+) -> ReviewOutcome:
     failed = {path for path, _ in values["errors"]}
     reviewed = {p: f for p, f in values["to_review"].items() if p not in failed}
     return ReviewOutcome(
-        # Fail closed: a paused outcome carries NO findings, so nobody can post them by mistake.
-        findings=[] if pending else values["validated"],
+        # Fail closed: a paused outcome carries only the findings that are NOT held, so nobody can
+        # post a held one by mistake. (ADR 0007, amended in 10.8: the rest is not held.)
+        findings=[f for f in values["validated"] if f.severity not in hold_severities]
+        if pending
+        else values["validated"],
+        held=[f for f in values["validated"] if f.severity in hold_severities] if pending else [],
         reviewed=reviewed,
         # The checkpointer's serializer turns tuples into lists: restore them.
-        skipped=[
-            (path, reason)
-            for path, reason in values["pre_skipped"] + values["limit_skipped"] + values["errors"]
-        ],
+        skipped=list(
+            dict.fromkeys(
+                (path, reason)
+                for path, reason in values["pre_skipped"]
+                + values["limit_skipped"]
+                + values["errors"]
+            )
+        ),
+        failed=sorted(failed),
         dropped=[(item, reason) for item, reason in values["dropped"]],
         raw_count=len(values["findings"]),
         risk=values["risk"],
@@ -300,7 +319,9 @@ async def review_diff(
         existing = await app.aget_state(config)
         if existing.next:  # already paused: a job retry. Do not start again.
             return _to_outcome(
-                existing.values, _held_count(existing.values["validated"], hold_severities)
+                existing.values,
+                _held_count(existing.values["validated"], hold_severities),
+                hold_severities,
             )
         if existing.values:
             # Finished earlier (stale). Without this the findings reducer appends duplicates.
@@ -310,7 +331,9 @@ async def review_diff(
     if checkpointer is not None:
         snap = await app.aget_state(config)
         if snap.next:  # the gate paused
-            return _to_outcome(snap.values, _held_count(snap.values["validated"], hold_severities))
+            return _to_outcome(
+                snap.values, _held_count(snap.values["validated"], hold_severities), hold_severities
+            )
     return _to_outcome(final, 0)
 
 
