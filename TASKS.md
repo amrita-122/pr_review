@@ -430,7 +430,9 @@ cost control
       `AWS_DEPLOY_ROLE_ARN` and a `production` environment with a required reviewer, and the changes committed and pushed.) Pipeline: GitHub Actions deploy workflow using OIDC (no stored AWS keys): build, Trivy scan, push, migration
       as a one-off ECS task, service update, wait for stable. `terraform plan` on PRs, `apply` on merge behind a protected
       environment, `checkov` on the Terraform.
-- [ ] 11.10 Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
+- [ ] 11.10 (Owner decision 2026-11-12: the earlier Phase 6 proofs (worker kill, redeliver, five quick pushes), run on
+      Railway, are counted for the ECS tests; they are not repeated. STILL TO DO: switch the webhook URL to the new
+      domain once HTTPS exists and confirm one sandbox PR gets its review from AWS.) Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
       parallel run): set the GitHub App's webhook URL to the new domain; open a sandbox PR; click Redeliver (no second
       review). Repeat the Phase 6 proofs on ECS: stop the worker task mid-review and the review still posts after the
       restart; five quick pushes give one review on the latest commit. Keep `PRIVATE_CHANNEL=none` and install the App
