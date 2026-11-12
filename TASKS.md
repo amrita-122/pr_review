@@ -401,7 +401,9 @@ cost control
       `SHUTDOWN_GRACE_SECONDS` (30) fits the ECS `stopTimeout` (max 120).
 - [x] 11.3 (DONE 2026-11-12: applied by the owner, 22 resources, state moved into the S3 bucket, three secrets loaded
       with `infra/scripts/put-secrets.ps1`, first image pushed to ECR. The ACM certificate is behind `enable_certificate`,
-      off until the nameservers point at the zone. Still open: GitHub `production` environment and the
+      off until the nameservers point at the zone. Hostinger's DNS editor has no NS records, so neither moving the
+      nameservers nor a subdomain delegation worked before the transfer; the zone holds copies of the live Hostinger
+      email records so the switch on transfer day (about 17 Nov) does not stop mail. Still open: GitHub `production` environment and the
       `AWS_DEPLOY_ROLE_ARN` variable.) `infra/foundation`: state bucket with native locking, hosted zone, ACM certificate, ECR (scan on push, lifecycle),
       Secrets Manager entries (values set by CLI), GitHub OIDC provider and deploy role, Budget and SNS alert.
 - [x] 11.4 (DONE 2026-11-12: applied and destroyed again in one test run) `infra/app` network: VPC, two AZs, public and private subnets, single NAT gateway, S3 gateway endpoint,
