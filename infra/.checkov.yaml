@@ -1,0 +1,41 @@
+# checkov (Terraform security scanner) config: `checkov -d infra --config-file infra/.checkov.yaml`
+# First run: 226 passed, 38 failed. Every check skipped below is a DECISION, not an oversight; the reason is next to it.
+# Each one is also listed as a known gap or a "next step" in infra/README.md.
+framework:
+  - terraform
+compact: true
+quiet: true
+skip-check:
+  # --- Cost: this is a demo stack that is destroyed between demos --------------------------------------------------
+  - CKV_AWS_157  # RDS Multi-AZ: doubles the database cost; var.db_multi_az turns it on for a permanent setup
+  - CKV_AWS_118  # RDS enhanced monitoring: extra cost and IAM role; CloudWatch alarms cover CPU/storage/connections
+  - CKV_AWS_353  # RDS performance insights: not needed at this size
+  - CKV_AWS_338  # log retention 1 year: 30 days is enough for a demo (cost)
+  - CKV2_AWS_11  # VPC flow logs: cost; first thing to add for a permanent setup
+  - CKV2_AWS_31  # WAF logging: cost; the counted rules are visible as metrics
+  - CKV_AWS_91   # ALB access logs: needs a log bucket; next step for a permanent setup
+  - CKV_AWS_144  # state bucket cross-region replication: overkill for a personal project
+  - CKV_AWS_18   # state bucket access logging: needs a second bucket
+  - CKV2_AWS_62  # state bucket event notifications: no consumer
+  # --- Destroy-between-demos design ---------------------------------------------------------------------------------
+  - CKV_AWS_150  # ALB deletion protection would block `terraform destroy`
+  - CKV_AWS_293  # RDS deletion protection: var.db_deletion_protection; a final snapshot is always kept instead
+  # --- Encryption with the AWS-managed key is accepted; customer-managed KMS keys are a next step -------------------
+  - CKV_AWS_136  # ECR: AES256 (AWS-managed) encryption
+  - CKV_AWS_145  # state bucket: SSE-S3 (AES256); versioned, private, TLS-only
+  - CKV_AWS_149  # Secrets Manager: AWS-managed key
+  - CKV_AWS_158  # CloudWatch log groups: default encryption
+  - CKV_AWS_26   # SNS: the AWS-managed key blocks CloudWatch/Budgets publishing (alarms would fail silently)
+  # --- Deliberate and documented in the code ---------------------------------------------------------------------
+  - CKV_AWS_260  # port 80 open: the ALB only redirects to HTTPS (or serves the test-only HTTP mode)
+  - CKV_AWS_2    # ALB listener protocol HTTP: only while enable_https = false (testing before the certificate exists)
+  - CKV_AWS_103  # same listener; the HTTPS listener uses a TLS 1.3/1.2 policy
+  - CKV_AWS_378  # target group HTTP: TLS ends at the ALB, inside a private VPC
+  - CKV2_AWS_20  # HTTP->HTTPS redirect exists (alb.tf) but only when enable_https is true
+  - CKV_AWS_356  # deploy role: ecr:GetAuthorizationToken and ecs:RegisterTaskDefinition do not support resource ARNs
+  - CKV2_AWS_76  # Log4j rule: AWSManagedRulesKnownBadInputsRuleSet (includes Log4j) is attached
+  - CKV_AWS_394  # AZ data source: only two AZs are used and a change would be visible in plan
+  # --- Not worth it here ------------------------------------------------------------------------------------------------
+  - CKV2_AWS_57  # secret rotation: the DB secret is rebuilt on every apply; the others are third-party keys rotated by hand
+  - CKV2_AWS_38  # Route53 DNSSEC
+  - CKV2_AWS_39  # Route53 query logging

@@ -128,9 +128,13 @@ Requires Python 3.12, [uv](https://docs.astral.sh/uv/), Docker (for local Postgr
    uv run python -m app.jobs.worker
    ```
 5. **Receive webhooks locally**: create a channel at smee.io, use it as the App's webhook URL, then
-   `npx smee-client --url $SMEE_URL --target http://localhost:8000/webhooks/github`.
-6. **Open a PR** on the test repo. For production, the repo ships a `Dockerfile`, `railway.json` (web) and
-   `railway.worker.json` (worker); run `alembic upgrade head` as the pre-deploy command and set the same env vars.
+   `npx smee-client --url $SMEE_URL --target http://127.0.0.1:8000/webhooks/github`. Use `127.0.0.1`, not
+   `localhost`: on Windows `localhost` can resolve to IPv6 (`::1`) while `fastapi run` listens on IPv4 only, which
+   gives `ECONNREFUSED ::1:8000` and events silently never arrive. Also run `uv run alembic upgrade head` after
+   pulling, or the worker logs `expiry_check_failed` (`ProgrammingError`) every minute.
+6. **Open a PR** on the test repo. For production, the repo ships a `Dockerfile`; run the web service and the worker
+   (`python -m app.jobs.worker`) from that one image, run `alembic upgrade head` before starting them, and set the
+   same env vars. The AWS deployment (ECS Fargate, RDS, Terraform) is in progress: see ADR 0011 and Phase 11.
 
 Optional switches (all off or defaulted in `.env.example`): `TRIAGE_ENABLED`, `CONFIRMATION_ENABLED`,
 `CONFIRM_TTL_HOURS`, `CONFIRM_SEVERITIES`.
@@ -175,9 +179,11 @@ Private delivery, checked on a real public sandbox repo (2026-11-11, dummy conte
 installation token creates a draft security advisory (HTTP 201); the public sees nothing (404, empty list); a
 collaborator with write access also sees nothing, only the admin does. On a private repo the endpoint returns 404,
 and turning off private vulnerability reporting does not block drafts. A true read-only user could not be tested on a
-personal repo (inferred). The end-to-end check (a planted finding giving a draft plus a neutral PR line) is still to be
-done by hand (10.21), so `PRIVATE_CHANNEL` defaults to `none` and high/critical findings on public repos are kept in
-the database only. The bot can close an advisory but cannot delete it. The App needs the extra permission
+personal repo (inferred). The end-to-end check was done by hand (10.21, 2026-11-11): on a public sandbox repo a
+planted SQL injection produced a draft advisory and a PR that says only "Review complete." (the non-security finding
+stayed inline); on the same repo made private the injection was posted inline and no advisory was created.
+`PRIVATE_CHANNEL` still defaults to `none` (high/critical findings on public repos are then kept in the database only),
+so set `PRIVATE_CHANNEL=advisory` where you want drafts. The bot can close an advisory but cannot delete it. The App needs the extra permission
 `repository_advisories: write` and the "Pull request review comment" event for `/dismiss`.
 
 ## Docs

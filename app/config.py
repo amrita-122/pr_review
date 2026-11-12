@@ -135,7 +135,7 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_url(self) -> str:
-        """Force the psycopg 3 driver; Railway/.env URLs are often plain postgres(ql)://."""
+        """Force the psycopg 3 driver; hosted-database/.env URLs are often plain postgres(ql)://."""
         url = self.database_url
         for prefix in ("postgres://", "postgresql://"):
             if url.startswith(prefix):

@@ -33,7 +33,7 @@ Source-of-truth files — read at the start of every session:
 Python 3.12 · uv · FastAPI · Pydantic v2 + pydantic-settings · SQLAlchemy 2.0 + Alembic ·
 Postgres · LangGraph + a langchain chat-model integration · httpx (GitHub REST, no SDK) ·
 PyJWT[crypto] · unidiff · tenacity · structlog · LangSmith · pytest + respx · ruff · mypy ·
-Docker · Railway · GitHub Actions
+Docker · GitHub Actions · AWS (ECS Fargate, RDS, ALB, Terraform; ADR 0011 replaces Railway)
 
 ## Commands
 - Dev server:      `uv run fastapi dev app/main.py`
@@ -42,7 +42,7 @@ Docker · Railway · GitHub Actions
 - Types:           `uv run mypy app`
 - Migrations:      `uv run alembic revision --autogenerate -m "..."` / `uv run alembic upgrade head`
 - Evals:           `uv run python -m evals.run` (Phase 4+)
-- Local webhooks:  `npx smee-client --url $SMEE_URL --target http://localhost:8000/webhooks/github`
+- Local webhooks:  `npx smee-client --url $SMEE_URL --target http://127.0.0.1:8000/webhooks/github` (not `localhost`: IPv6 `::1` is refused on Windows)
 
 ## Layout
 app/main.py          FastAPI app + routes

@@ -88,3 +88,11 @@ Not built yet; this section is the target design and is updated as each branch l
   Contents API and passes them to `review_diff` as data; findings have no line and go to the summary or the
   private channel.
 - Trust boundary addition: repo files read for context are untrusted, like the diff.
+
+## Deployment (Phase 11; ADR 0011, code in `infra/`)
+The same two processes run on AWS: `web` and `worker` as ECS Fargate services from one ECR image, in private subnets,
+with RDS Postgres, an ALB with HTTPS and a WAF in front, secrets injected from Secrets Manager, logs and alarms in
+CloudWatch. The diagram and the runbook are in [infra/README.md](../infra/README.md). Nothing in the application
+changed for this: it already took all configuration from environment variables.
+- Trust boundary addition: the internet reaches only the ALB; the ALB reaches only the web tasks; only tasks reach the
+  database. The webhook HMAC check (`app/main.py`) stays the gate for what the web tasks accept.

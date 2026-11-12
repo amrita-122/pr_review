@@ -1,0 +1,4 @@
+state_bucket  = "pr-review-tfstate-<account-id>"
+image_tag     = "<a tag that exists in the ECR repository>"
+github_app_id = "<numeric GitHub App id>"
+enable_https  = false

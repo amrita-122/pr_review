@@ -1,0 +1,10 @@
+# Terraform working files and state never go in git (state can hold the database password).
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+tfplan*
+# Real values (account ids, app id). Copy *.tfvars.example to terraform.tfvars and fill it in.
+*.tfvars
+!*.tfvars.example
+backend.hcl

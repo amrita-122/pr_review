@@ -1,0 +1,71 @@
+name: "Deploy to AWS"
+
+# Runs after CI is green on main (or by hand). AWS access is a short-lived OIDC token for the role the foundation
+# stack created: no AWS keys are stored in GitHub. The `production` environment is where a required reviewer is set
+# (Settings > Environments), so a deploy waits for a human click.
+#
+# One-time setup in GitHub: Settings > Secrets and variables > Actions > Variables:
+#   AWS_DEPLOY_ROLE_ARN = the `github_deploy_role_arn` output of infra/foundation
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never cut a running deploy in half
+
+permissions:
+  id-token: write # needed to request the OIDC token
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: pr-review-agent
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Image tag = first 12 characters of the commit
+        id: tag
+        run: echo "tag=${SHA:0:12}" >> "$GITHUB_OUTPUT"
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Build
+        run: docker build -t scan-candidate:latest .
+
+      # Fail the deploy on known, fixable CRITICAL/HIGH vulnerabilities in the image.
+      - name: Scan the image (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: scan-candidate:latest
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Push to ECR
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${{ steps.tag.outputs.tag }}"
+          docker tag scan-candidate:latest "$IMAGE"
+          docker push "$IMAGE"
+
+      - name: Migrate, then roll the services
+        run: bash infra/scripts/deploy.sh "${{ steps.tag.outputs.tag }}"

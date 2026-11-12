@@ -1,6 +1,6 @@
 # ADR 0001 — v1 scope and stack
 
-Status: Accepted · Date: 2026-09-30
+Status: Accepted (hosting superseded by ADR 0011: AWS replaces Railway) · Date: 2026-09-30
 
 ## Context
 Solo portfolio project, built while learning just-in-time, alongside a job search.

@@ -1,6 +1,6 @@
 # ADR 0005 — Postgres job queue and a separate worker (replaces BackgroundTasks)
 
-Status: Accepted · Date: 2026-11-03
+Status: Accepted (the "second Railway service" is now an ECS service, ADR 0011; the queue design is unchanged) · Date: 2026-11-03
 
 ## Context
 Reviews ran in FastAPI `BackgroundTasks` after the 202. A restart or crash mid-review lost the work (ADR 0002
