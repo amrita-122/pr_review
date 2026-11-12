@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.review.cost import Prices, PriceTable
@@ -71,6 +71,22 @@ class Settings(BaseSettings):
     architecture_max_chars_per_file: int = 8_000
     architecture_max_total_chars: int = 40_000  # all related files together
     architecture_max_findings: int = 5
+    # Deterministic secret scan of added lines before validation (10.32). Off until its false-alarm
+    # rate is measured on real diffs.
+    secret_scan_enabled: bool = False
+    # Spend and abuse limits (10.34). 0 = no limit. The per-PR cost is bounded by the size caps
+    # above (max_total_chars_per_pr, max_files_per_pr), so there is no separate per-PR budget.
+    max_cost_per_day_usd: float = Field(default=0, ge=0)  # all runs started since 00:00 UTC
+    max_runs_per_author_per_hour: int = Field(default=0, ge=0)  # reviews queued per PR author
+    # A Slack-style incoming webhook told when a review job fails for good. A secret.
+    alert_webhook_url: SecretStr | None = None
+    review_command_enabled: bool = True  # /review re-runs a failed, skipped or rate-limited review
+    # Review only the files changed since the PR's last reviewed commit (10.31). Off by default:
+    # a file that failed review earlier is not retried by a later incremental run.
+    incremental_review_enabled: bool = False
+    # A neutral Check Run with annotations after a posted review (ADR 0010). Needs the App
+    # permission `checks: write`; without it the call fails, is logged and nothing else changes.
+    check_run_enabled: bool = False
     review_drafts: bool = False  # draft PRs are skipped until they are marked ready for review
     # Human confirmation (Phase 8): a review with a held finding waits for a maintainer /confirm.
     confirmation_enabled: bool = False
@@ -119,7 +135,7 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_url(self) -> str:
-        """Force the psycopg 3 driver; Railway/.env URLs are often plain postgres(ql)://."""
+        """Force the psycopg 3 driver; hosted-database/.env URLs are often plain postgres(ql)://."""
         url = self.database_url
         for prefix in ("postgres://", "postgresql://"):
             if url.startswith(prefix):

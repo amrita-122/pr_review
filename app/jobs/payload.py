@@ -18,6 +18,7 @@ class ReviewJobPayload(BaseModel):
     number: int
     head_sha: str
     repo_private: bool | None = None  # None = unknown = treated as public (fail closed)
+    base_sha: str | None = None  # the PR's base commit: .review-bot.yml is read from here only
 
     @property
     def repo_full_name(self) -> str:
@@ -37,6 +38,7 @@ class ReviewJobPayload(BaseModel):
             number=event.number,
             head_sha=event.head_sha,
             repo_private=event.repo_private,
+            base_sha=event.base_sha,
         )
 
 
@@ -51,7 +53,7 @@ class ConfirmJobPayload(BaseModel):
     comment_id: int
     commenter_login: str = Field(pattern=r"^[A-Za-z0-9-]{1,39}$")  # goes into a URL path
     author_login: str | None = None  # the PR's author: may not confirm their own review
-    command: Literal["confirm", "dismiss"] = "confirm"
+    command: Literal["confirm", "dismiss", "review"] = "confirm"
     # /dismiss as a reply in a finding's thread: the id of the finding's comment (None = the
     # held review as a whole).
     target_comment_id: int | None = None

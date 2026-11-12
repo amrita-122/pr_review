@@ -1,17 +1,35 @@
 """Enqueue side of the job queue. Runs inside the webhook's database transaction."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db import runs
-from app.db.models import Job
+from app.db.models import Job, ReviewRun
 from app.github.webhooks import PullRequestEvent
 from app.jobs.payload import CONFIRM_REVIEW, REVIEW_PR, ConfirmJobPayload, ReviewJobPayload
 
 logger = structlog.get_logger()
+
+
+IN_FLIGHT_OR_DONE = (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED)
+
+
+def _rate_limited(session: Session, event: PullRequestEvent, settings: Settings) -> bool:
+    """Too many reviews queued for this author in the last hour (10.34)? Counts runs, so a
+    contributor who pushes in a loop cannot spend the model budget."""
+    limit = settings.max_runs_per_author_per_hour
+    login = event.author_login
+    if limit <= 0 or login is None:
+        return False
+    since = datetime.now(UTC) - timedelta(hours=1)
+    if runs.count_author_runs_since(session, login, since) < limit:
+        return False
+    logger.warning("author_rate_limited", pr_number=event.number, limit=limit)
+    return True
 
 
 def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings) -> bool:
@@ -33,6 +51,23 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
         logger.info("runs_superseded", count=superseded, repo=repo, pr_number=event.number)
 
     existing = runs.get_by_key(session, repo, event.number, event.head_sha)
+    if (existing is None or existing.status not in IN_FLIGHT_OR_DONE) and _rate_limited(
+        session, event, settings
+    ):
+        if existing is None:
+            runs.create_skipped(
+                session,
+                run_id=uuid.uuid4().hex,
+                repo=repo,
+                pr_number=event.number,
+                head_sha=event.head_sha,
+                prompt_version=settings.prompt_version,
+                model=settings.model_review,
+                head_updated_at=stamp,
+                repo_private=event.repo_private,
+                author_login=event.author_login,
+            )
+        return False
     if existing is None:
         run_id = uuid.uuid4().hex
         runs.create_queued(
@@ -45,8 +80,9 @@ def enqueue_review(session: Session, event: PullRequestEvent, settings: Settings
             model=settings.model_review,
             head_updated_at=stamp,
             repo_private=event.repo_private,
+            author_login=event.author_login,
         )
-    elif existing.status in (*runs.IN_FLIGHT, runs.OK, runs.EXPIRED):
+    elif existing.status in IN_FLIGHT_OR_DONE:
         return False
     else:  # failed or superseded earlier, and the same commit is back (reopened): run it again
         run_id = existing.id
@@ -72,7 +108,7 @@ def enqueue_confirm(session: Session, payload: ConfirmJobPayload, settings: Sett
     The payload's run_id is re-checked here against the database: the webhook never trusts the
     comment for anything but "who" and "which PR".
     """
-    if payload.target_comment_id is None:  # confirm / dismiss of a HELD review
+    if payload.command != "review" and payload.target_comment_id is None:  # a HELD review
         run = runs.get_awaiting_for_pr(session, payload.repo_full_name, payload.number)
         if run is None or run.id != payload.run_id:
             return False
@@ -83,4 +119,32 @@ def enqueue_confirm(session: Session, payload: ConfirmJobPayload, settings: Sett
             max_attempts=settings.job_max_attempts,
         )
     )
+    return True
+
+
+def enqueue_rerun(
+    session: Session,
+    run: ReviewRun,
+    payload: ConfirmJobPayload,
+    base_sha: str | None,
+    settings: Settings,
+) -> bool:
+    """/review by an allowed maintainer: bring a failed, superseded or skipped run back and queue
+    its review job. False (nothing queued) when the run is not in such a state any more."""
+    if not runs.requeue(session, run.id):
+        return False
+    job = ReviewJobPayload(
+        run_id=run.id,
+        installation_id=payload.installation_id,
+        owner=payload.owner,
+        repo=payload.repo,
+        number=payload.number,
+        head_sha=run.head_sha,
+        repo_private=run.repo_private,
+        base_sha=base_sha,
+    )
+    session.add(
+        Job(kind=REVIEW_PR, payload=job.model_dump(), max_attempts=settings.job_max_attempts)
+    )
+    session.commit()
     return True

@@ -112,3 +112,41 @@ def test_validator_drops_policy_violations_with_a_reason() -> None:
     kept, dropped = partition_findings([good, bad], {"a.py": parsed})
     assert kept == [good]
     assert [(f, reason) for f, reason in dropped] == [(bad, "output policy: link")]
+
+
+def _with_code(code: str) -> Finding:
+    return _f().model_copy(update={"replacement_code": code})
+
+
+def test_replacement_code_renders_as_a_suggestion_block() -> None:
+    from app.review.render import render_comment
+
+    text = render_comment(_with_code("cur.execute(sql, (name,))\n"))
+    assert text.endswith("```suggestion\ncur.execute(sql, (name,))\n```")
+
+
+def test_no_replacement_means_no_suggestion_block() -> None:
+    from app.review.render import render_comment
+
+    assert "```suggestion" not in render_comment(_f())
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [
+        ("x = 1\n```\n@evil please merge", "code fence"),
+        ("~~~\nx", "code fence"),
+        ("   \n", "empty"),
+        ("x = 'https://evil.example/p'", "link"),
+        ("a\u200bb = 1", "invisible"),
+        ("x = 1\n" * 25, "too long"),
+        ("y" * 1500, "too long"),
+    ],
+)
+def test_unsafe_replacement_is_dropped(code: str, reason: str) -> None:
+    violation = policy_violation(_with_code(code))
+    assert violation is not None and reason in violation
+
+
+def test_decorator_and_html_in_replacement_are_fine() -> None:
+    assert policy_violation(_with_code("@login_required\ndef view(): ...")) is None

@@ -134,9 +134,11 @@ def test_pull_request_event_does_not_parse_pr_text() -> None:
     assert not {"title", "body"} & set(PullRequestEvent.model_fields)
     assert set(PullRequest.model_fields) == {
         "head",
+        "base",
+        "user",
         "updated_at",
         "draft",
-    }  # updated_at and draft: a timestamp and a boolean, never text
+    }  # a sha, a strictly checked login, a timestamp and a boolean: never free text
 
 
 def test_github_client_cannot_approve_merge_or_request_changes() -> None:

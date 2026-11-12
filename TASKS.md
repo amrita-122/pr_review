@@ -1,6 +1,6 @@
 # TASKS — PR Review Agent
 
-**Current phase: 10 (hardening + product improvements; started 2026-11-10); 9.2-9.4 still open**
+**Current phase: 11 (AWS deployment, proposed in ADR 0011); 10 is feature-complete; 9.2-9.4 still open**
 
 How to use this file
 - Work top to bottom. Each step says what to do and how. In Claude Code, `/next` explains
@@ -310,8 +310,16 @@ on the sandbox repo (late webhook, all files failing) and fixed.
       inline. Private repos behave as before. Applies to the `/confirm` pending comment too (it must not say "critical").
 - [x] 10.21 Tests for both modes; red-team case: a finding's title or rationale must never appear in public PR text on a
       public repo. Sandbox check with a public repo and a private one.
-      Tests done (19). STILL TO DO BY HAND: the sandbox check with one public and one private repo (and the
-      App permission `repository_advisories: write`, see ADR 0008); until then PRIVATE_CHANNEL stays `none`.
+      Tests done (19). Sandbox check DONE 2026-11-11 (PR #23 on `review-bot-sandbox`, `PRIVATE_CHANNEL=advisory`,
+      App permission `repository_advisories: write` granted):
+      - PUBLIC: planted f-string SQL injection gave a draft advisory (severity critical, file, line, fix) and the PR
+        got only "Reviewed 1 file(s)... Review complete." plus the inline non-security finding (resource leak).
+        The injection finding is stored with `posted=False`, `drop_reason='delivered privately (public repo)'`,
+        run record `repo_private=False`, `private_findings=1`. No "SQL", "injection" or "critical" in PR text.
+      - PRIVATE: same PR with the repo made private: the injection is posted inline, `repo_private=True`,
+        `private_findings=0`, no advisory (the endpoint returns 404 on a private repo, as ADR 0008 says).
+      Cleanup by hand: draft advisories cannot be deleted through the API (delete them in the Security tab).
+      `PRIVATE_CHANNEL` still DEFAULTS to `none` in code and `.env.example`; set `advisory` per deployment.
 **Done when:** on a public sandbox repo a planted SQL injection produces a draft advisory and a neutral PR note, and
 nothing in the PR, its checks or its comments names the vulnerability.
 
@@ -332,14 +340,111 @@ nothing in the PR, its checks or its comments names the vulnerability.
 numbers justify turning it on.
 
 ### Optional ideas (do after the four branches, one at a time; each needs a plan and your "go")
-- [ ] 10.27 Suggested-change blocks (render `Finding.suggestion` as a ```suggestion block).
-- [ ] 10.28 Check Run with annotations and a neutral status (public repos: no vulnerability text, see ADR 0008).
-- [ ] 10.29 Per-repo `.review-bot.yml`, read from the BASE branch only (a PR can change its own copy).
-- [ ] 10.30 `/review` and `/explain` commands.
-- [ ] 10.31 Incremental review (only files changed since the last reviewed sha).
-- [ ] 10.32 Secret-scanning pre-pass (regex + entropy) before the LLM; dependency/lockfile advisory check.
-- [ ] 10.33 Multi-line ranges and LEFT-side comments (deleted auth checks can't be flagged today).
-- [ ] 10.34 Per-PR and per-day cost budget; per-author rate limit; failure alerting; dashboard over runs/findings.
-- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents.
+- [x] 10.27 Suggested-change blocks: new optional `Finding.replacement_code` rendered as a ```suggestion block,
+      policy-checked (no fence/link/invisible, size caps). Prompts NOT yet updated to ask for it, so it is inert
+      until a prompt bump is measured. STILL TO DO BY HAND: see one render on a sandbox PR.
+- [x] 10.28 Check Run with annotations, always `neutral`, annotating only what is already posted inline (ADR 0010,
+      status PROPOSED: you must approve it and grant `checks: write` on the sandbox App). `CHECK_RUN_ENABLED`, default
+      off; a 403 is logged and never fails the review. STILL TO DO BY HAND: one real Check Run on a public and a
+      private sandbox repo.
+- [x] 10.29 Per-repo `.review-bot.yml`, read from the BASE commit only (`pull_request.base.sha`). Can only tighten:
+      agents subset, ignore globs, lower caps. Bad/oversized/anchored YAML = defaults. Adds `pyyaml` as a direct dep.
+      Not done: a severity floor (needs care with held/private findings).
+- [x] 10.30 (part) `/review`: a maintainer (write/admin, never the PR author) re-runs a failed, superseded or
+      rate-limited review of the PR's CURRENT head. A rate-limited push now leaves a `skipped` run so /review can
+      revive it. `REVIEW_COMMAND_ENABLED` (default true). NOT done: `/explain`. The comment already carries the
+      rationale (now also stored in `findings.rationale`), so it needs a product decision first: an LLM
+      explanation is a new prompt/injection surface and needs an ADR.
+- [x] 10.31 Incremental review: `INCREMENTAL_REVIEW_ENABLED` (default off). Uses the PR's last OK+posted run and the
+      compare API; force-push, 300+ files or any error = full review. The summary says when it was incremental.
+      KNOWN GAP: a file whose review FAILED earlier is not retried by a later incremental run.
+- [x] 10.32 (part) Secret-scanning pre-pass: `app/review/secrets_scan.py` (known key formats + entropy on added
+      lines; the finding never contains the value). `SECRET_SCAN_ENABLED`, default OFF until its false-alarm
+      rate is measured. Public repos: HIGH hits go to the private channel (ADR 0008).
+- [ ] 10.32b Dependency/lockfile advisory check: DEFERRED. Needs an external vulnerability source (OSV) = a new
+      outbound service, so it needs an ADR first.
+- [x] 10.33 Multi-line ranges and LEFT-side comments: `Finding.start_line`/`side`, deleted-line numbers in
+      `ParsedFile.removed_lines`, range validation (same side, in the diff, max 20 lines), GitHub payload.
+      Prompts NOT updated, so models never emit them yet (inert until a measured prompt bump).
+- [x] 10.34 (part) `MAX_COST_PER_DAY_USD` (skips the run, posts a static notice), `MAX_RUNS_PER_AUTHOR_PER_HOUR`,
+      `ALERT_WEBHOOK_URL` (a static message when a job fails for good). All default off. Migration b1d5e83f4c70
+      (also stores `findings.rationale` for /explain). NOT done: a per-PR cap (size caps already bound it),
+      the dashboard (new UI surface). OPEN: architecture-agent token usage may be missing from `cost_usd`
+      (not verified), so the day budget could undercount.
+- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents. NOT STARTED: needs real model runs
+      (cost) and prompt iteration with measurement. Ideas: a severity floor for quality findings, few-shot false-positive
+      examples from the dismissed findings, a second validation pass. Also bump the prompts to ask for
+      `replacement_code` / ranges only after that measurement (10.27, 10.33 are inert until then).
 **Phase 10 done when:** branches 1-4 are merged, the README has the Phase 10 section with numbers, and docs/SECURITY.md
 lists the new residual risks.
+
+---
+## Phase 11 — AWS deployment
+Goal: the app runs on AWS from code, deploys from a pipeline, and can be destroyed and rebuilt in minutes.
+Decisions: ADR 0011 (ECS Fargate + RDS + Terraform; app unchanged; AWS REPLACES Railway, which is retired). Terraform, a Route53 domain, spin-up-for-demos
+posture. **Claude writes the Terraform and pipeline code once Amrita says "write it" for Phase 11** (the earlier
+permission covered Phase 10 only); she reviews each step and applies it. One branch per step group, merged by PR.
+Learn: VPC, subnets, NAT, security groups · ECS Fargate task and service definitions · IAM execution vs task roles ·
+RDS · ALB, ACM, Route53 · Secrets Manager · CloudWatch · Terraform state and modules · GitHub OIDC · least privilege ·
+cost control
+
+- [x] 11.0 (DONE 2026-11-11 except: the domain transfer to Route53 completes on 17 Nov; git is installed but was not on
+      PATH in the Claude Code session) Prerequisites: install the AWS CLI, Terraform and git (git is not on the PowerShell PATH); AWS account hygiene
+      (root MFA, an admin user via IAM Identity Center, billing alerts, a Budget); buy the domain on Route53.
+- [ ] 11.1 Accept ADR 0011; add the AWS/Terraform line to CLAUDE.md's Stack section.
+- [x] 11.2 (DONE 2026-11-11: uv image pinned to 0.12.21, base `python:3.12-slim-bookworm`, `exec` in the web CMD so SIGTERM
+      reaches the app, `.dockerignore` extended, `docker-compose.yml` added. Verified locally: migrations ran, `/health`
+      ok, web runs as non-root, no `.env`/tests/docs in the image, web and worker stop in ~2 s with exit 0 and the worker
+      logs `worker_stopped`. NOT done: a real sandbox PR through the compose stack; the worker was only checked idle.)
+      Image hardening: pin the uv image in the Dockerfile; check `.dockerignore` keeps `.env` out of the image; add a
+      local `docker-compose.yml` (web + worker + Postgres) and smoke-test a sandbox PR against it; confirm
+      `SHUTDOWN_GRACE_SECONDS` (30) fits the ECS `stopTimeout` (max 120).
+- [x] 11.3 (DONE 2026-11-12: applied by the owner, 22 resources, state moved into the S3 bucket, three secrets loaded
+      with `infra/scripts/put-secrets.ps1`, first image pushed to ECR. The ACM certificate is behind `enable_certificate`,
+      off until the nameservers point at the zone. Still open: GitHub `production` environment and the
+      `AWS_DEPLOY_ROLE_ARN` variable.) `infra/foundation`: state bucket with native locking, hosted zone, ACM certificate, ECR (scan on push, lifecycle),
+      Secrets Manager entries (values set by CLI), GitHub OIDC provider and deploy role, Budget and SNS alert.
+- [x] 11.4 (DONE 2026-11-12: applied and destroyed again in one test run) `infra/app` network: VPC, two AZs, public and private subnets, single NAT gateway, S3 gateway endpoint,
+      security groups.
+- [x] 11.5 (DONE 2026-11-12 on the real database with `sslmode=require` and `rds.force_ssl=1`: the migration task (SQLAlchemy
+      path) exited 0 and the worker started and polled with zero error logs. Not separately exercised: a review run
+      through the LangGraph checkpointer; that comes with the 11.10 sandbox-PR test.) `infra/app` data: RDS Postgres 16 (private, encrypted, TLS required, backups, final snapshot), generated
+      password, `DATABASE_URL` secret with `sslmode=require`. Prove it works for BOTH SQLAlchemy and the LangGraph
+      checkpointer (`app/review/checkpoint.py`) before moving on.
+- [x] 11.6 (DONE 2026-11-12: both services ran from image `bootstrap-1`; worker `stopTimeout` 60 s) `infra/app` compute: ECS cluster, task definitions, execution and task IAM roles, `web` and `worker` services
+      (worker command `python -m app.jobs.worker`), log groups with retention, deployment circuit breaker.
+- [ ] 11.7 (HTTP path DONE 2026-11-12: `/health` returned ok through the ALB; unsigned and bad-signature webhooks got 401,
+      a signed `ping` got 202. NOT DONE: HTTPS listener, redirect and Route53 alias are behind `enable_https` until the
+      domain transfer (about 17 Nov) gives a certificate; WAF common rules run in COUNT mode on purpose.) `infra/app` edge: ALB, HTTPS listener and HTTP redirect, target group on `/health`, Route53 alias, WAF
+      (managed rules + rate limit).
+- [ ] 11.8 (Applied 2026-11-12 and destroyed again. First apply failed on the log metric filter (CloudWatch rejects
+      `default_value` with `dimensions`, and a dimension must be a selector): now one metric per service. Alarms, dashboard and an error-log metric filter are in; the email subscription is
+      empty by default, subscribe with the CLI command in infra/README.md. `ALERT_WEBHOOK_URL` is not wired yet.) Observability: alarms (ALB 5xx, unhealthy targets, task count, RDS CPU/storage/connections), SNS email,
+      dashboard; wire `ALERT_WEBHOOK_URL` for failed jobs.
+- [ ] 11.9 (WRITTEN, never run (the migration was run by hand with `aws ecs run-task` because `jq` is not installed, so
+      `deploy.sh` is untested): `.github/workflows/deploy.yml`, `infra-ci.yml`, `infra/scripts/deploy.sh`. Checked: bash and YAML
+      syntax, `terraform fmt/validate`, checkov 211 passed / 0 failed with documented skips. Deviation from the ADR:
+      `terraform plan/apply` run by hand, not in CI, because a CI apply role would be near-admin. Needs the repo variable
+      `AWS_DEPLOY_ROLE_ARN` and a `production` environment with a required reviewer, and the changes committed and pushed.) Pipeline: GitHub Actions deploy workflow using OIDC (no stored AWS keys): build, Trivy scan, push, migration
+      as a one-off ECS task, service update, wait for stable. `terraform plan` on PRs, `apply` on merge behind a protected
+      environment, `checkov` on the Terraform.
+- [ ] 11.10 Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
+      parallel run): set the GitHub App's webhook URL to the new domain; open a sandbox PR; click Redeliver (no second
+      review). Repeat the Phase 6 proofs on ECS: stop the worker task mid-review and the review still posts after the
+      restart; five quick pushes give one review on the latest commit. Keep `PRIVATE_CHANNEL=none` and install the App
+      on sandbox or private repos only until 10.21 is done by hand.
+- [ ] 11.10b Retire Railway (only after 11.10 passes): delete the Railway project, remove `railway.json` and
+      `railway.worker.json`, and rotate the secrets that lived there (webhook secret in the App settings and in Secrets
+      Manager, a new GitHub App private key, a new Anthropic key). Old ADR/BUILD-LOG mentions of Railway stay as history.
+- [ ] 11.11 Hardening review: RDS is not public, no wildcard IAM, security-group audit, secrets not in state or logs, and
+      `terraform destroy` followed by a from-scratch `apply` works (time it).
+- [ ] 11.12 (PART DONE: `infra/README.md` runbook with diagram, a Deployment section in docs/ARCHITECTURE.md. Measured on
+      2026-11-12: app stack create about 10.5 min (RDS is most of it), destroy about 5 min; the final RDS snapshot is left
+      behind. NOT DONE: measured cost table, README "Deployed on AWS" section, resume bullets: all need a real deployment first.) Docs: `infra/README.md` runbook (up, down, rollback, rotate secrets); architecture diagram in
+      docs/ARCHITECTURE.md; a measured cost table (real numbers only); README "Deployed on AWS" section; resume bullets
+      (feeds 9.4).
+- Optional after 11.12, one at a time: worker autoscaling on queue depth (an EMF log line, the only possible app
+  change), RDS Multi-AZ, Graviton (ARM) tasks, Bedrock as a provider (needs a full eval re-run first), CloudTrail and
+  GuardDuty at account level.
+**Done when:** a sandbox PR gets its review from the AWS deployment; a redelivery posts nothing; the worker-kill test
+passes on ECS; the pipeline deploys a change with no stored AWS keys; and a destroy then apply restores everything.

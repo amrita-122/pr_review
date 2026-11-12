@@ -7,8 +7,9 @@ Callers decide which writes are critical (let them raise) and which are bookkeep
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,8 @@ RUNNING = "running"
 OK = "ok"
 FAILED = "failed"
 SUPERSEDED = "superseded"
+RERUNNABLE = ("failed", "superseded", "skipped")  # what /review may bring back
+SKIPPED = "skipped"  # over the daily budget: nothing was reviewed or posted
 AWAITING_CONFIRMATION = "awaiting_confirmation"  # held for a maintainer's /confirm (Phase 8)
 CONFIRMING = "confirming"  # a /confirm was accepted; the held review is being posted
 EXPIRED = "expired"  # nobody confirmed in time; never posted
@@ -56,6 +59,7 @@ def create_queued(
     model: str,
     head_updated_at: datetime | None = None,
     repo_private: bool | None = None,
+    author_login: str | None = None,
 ) -> None:
     """Add (not commit) a queued run: the caller commits it together with the job."""
     session.add(
@@ -66,6 +70,7 @@ def create_queued(
             head_sha=head_sha,
             head_updated_at=head_updated_at,
             repo_private=repo_private,
+            author_login=author_login,
             status=QUEUED,
             prompt_version=prompt_version,
             model=model,
@@ -244,6 +249,7 @@ def save_findings(
             severity=f.severity.value,
             category=f.category.value,
             title=f.title,
+            rationale=f.rationale if is_posted else None,
             posted=is_posted,
             drop_reason=reason,
         )
@@ -733,3 +739,87 @@ def known_architecture_titles(
         )
     ).all()
     return set(rows)
+
+
+# --- Phase 10.34: spend and abuse limits ------------------------------------------------------
+
+
+def day_start(now: datetime) -> datetime:
+    return now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def cost_since(session: Session, since: datetime) -> Decimal:
+    """What runs started since `since` have cost so far (a running run counts what it has used)."""
+    total = session.scalar(
+        select(func.coalesce(func.sum(ReviewRun.cost_usd), 0)).where(ReviewRun.started_at >= since)
+    )
+    return Decimal(total or 0)
+
+
+def count_author_runs_since(session: Session, author_login: str, since: datetime) -> int:
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(ReviewRun)
+            .where(ReviewRun.author_login == author_login, ReviewRun.started_at >= since)
+        )
+        or 0
+    )
+
+
+# --- Phase 10.30: /review ------------------------------------------------------------------
+
+
+def latest_for_pr(session: Session, repo: str, pr_number: int) -> ReviewRun | None:
+    """The newest run of this PR, whatever its state."""
+    return session.scalars(
+        select(ReviewRun)
+        .where(ReviewRun.repo == repo, ReviewRun.pr_number == pr_number)
+        .order_by(ReviewRun.started_at.desc())
+    ).first()
+
+
+def create_skipped(session: Session, **kwargs: Any) -> None:
+    """A run that was refused before it started (rate limited): kept, so /review can revive it."""
+    create_queued(session, **kwargs)
+    session.flush()
+    run = session.get(ReviewRun, kwargs["run_id"])
+    if run is not None:
+        run.status = SKIPPED
+        run.finished_at = datetime.now(UTC)
+
+
+def requeue(session: Session, run_id: str) -> bool:
+    """failed / superseded / skipped -> queued, atomically. False if it was not in such a state
+    (two /review comments race: only one wins, so only one job is queued)."""
+    result = session.execute(
+        update(ReviewRun)
+        .where(ReviewRun.id == run_id, ReviewRun.status.in_(RERUNNABLE))
+        .values(
+            status=QUEUED,
+            error=None,
+            failure_reason=None,
+            finished_at=None,
+            failure_comment_posted=False,
+        )
+    )
+    session.commit()
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+# --- Phase 10.31: incremental review -------------------------------------------------------
+
+
+def last_reviewed_head(session: Session, repo: str, pr_number: int, run_id: str) -> str | None:
+    """The head sha of this PR's newest finished-and-posted run other than `run_id`."""
+    return session.scalars(
+        select(ReviewRun.head_sha)
+        .where(
+            ReviewRun.repo == repo,
+            ReviewRun.pr_number == pr_number,
+            ReviewRun.id != run_id,
+            ReviewRun.status == OK,
+            ReviewRun.posted_at.is_not(None),
+        )
+        .order_by(ReviewRun.started_at.desc())
+    ).first()

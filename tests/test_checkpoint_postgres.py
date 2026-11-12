@@ -40,7 +40,7 @@ def _graph(saver: Any) -> Any:
 
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
-    # psycopg's async mode cannot use Windows' default Proactor loop; Linux (CI, Railway) is fine.
+    # psycopg's async mode cannot use Windows' default Proactor loop; Linux (CI, ECS) is fine.
     return asyncio.run(coro, loop_factory=asyncio.SelectorEventLoop)
 
 

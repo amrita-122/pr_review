@@ -246,7 +246,10 @@ async def test_off_by_default_no_model_no_file_fetches(
 ) -> None:
     event = make_event()
     gh = Pipeline(event)
-    contents = respx.get(url__regex=r".*/contents/.*").mock(return_value=httpx.Response(404))
+    # (the per-repo .review-bot.yml lookup, 10.29, is the one contents read that is always made)
+    contents = respx.get(url__regex=r".*/contents/(?!\.review-bot).*").mock(
+        return_value=httpx.Response(404)
+    )
     enqueue(event)
     await drain()
     assert contents.call_count == 0 and "Architecture notes" not in gh.sent_review()["body"]

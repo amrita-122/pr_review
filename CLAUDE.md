@@ -33,7 +33,7 @@ Source-of-truth files — read at the start of every session:
 Python 3.12 · uv · FastAPI · Pydantic v2 + pydantic-settings · SQLAlchemy 2.0 + Alembic ·
 Postgres · LangGraph + a langchain chat-model integration · httpx (GitHub REST, no SDK) ·
 PyJWT[crypto] · unidiff · tenacity · structlog · LangSmith · pytest + respx · ruff · mypy ·
-Docker · Railway · GitHub Actions
+Docker · GitHub Actions · AWS (ECS Fargate, RDS, ALB, Terraform; ADR 0011 replaces Railway)
 
 ## Commands
 - Dev server:      `uv run fastapi dev app/main.py`
@@ -42,7 +42,7 @@ Docker · Railway · GitHub Actions
 - Types:           `uv run mypy app`
 - Migrations:      `uv run alembic revision --autogenerate -m "..."` / `uv run alembic upgrade head`
 - Evals:           `uv run python -m evals.run` (Phase 4+)
-- Local webhooks:  `npx smee-client --url $SMEE_URL --target http://localhost:8000/webhooks/github`
+- Local webhooks:  `npx smee-client --url $SMEE_URL --target http://127.0.0.1:8000/webhooks/github` (not `localhost`: IPv6 `::1` is refused on Windows)
 
 ## Layout
 app/main.py          FastAPI app + routes
@@ -68,7 +68,8 @@ docs/                ARCHITECTURE.md · SECURITY.md · decisions/ · PROMPTS.md
   public page. On a PUBLIC repo (`repository.private == false`), high/critical security findings never appear
   in PR comments, review text, Check Runs or annotations. They go to a private channel (draft security
   advisory); the PR gets only a neutral "review complete" line. Anything the bot writes to a public PR is public.
-- Permissions: the App may add `repository_advisories: write` (draft advisories) per ADR 0008. It still never
+- Permissions: the App may add `repository_advisories: write` (draft advisories) per ADR 0008, and `checks: write`
+  (a neutral Check Run, off by default) per ADR 0010. It still never
   approves, requests changes, merges, or writes repository contents. Any other new permission needs an ADR.
 - Every finding passes the validator (file reviewed, line commentable, output policy)
   before posting. Dropped findings are logged with a reason.

@@ -82,11 +82,64 @@ async def list_pr_files(
     return files
 
 
+async def create_check_run(
+    token: str, owner: str, repo: str, head_sha: str, output: dict[str, object]
+) -> None:
+    """One completed Check Run, always `neutral` (ADR 0010: advisory, never blocks a merge).
+    Needs the App permission checks: write."""
+    async with github_client() as client:
+        response = await client.post(
+            f"/repos/{owner}/{repo}/check-runs",
+            json={
+                "name": CHECK_NAME,
+                "head_sha": head_sha,
+                "status": "completed",
+                "conclusion": "neutral",
+                "output": output,
+            },
+            headers=_headers(token),
+        )
+    response.raise_for_status()
+
+
+CHECK_NAME = "PR Review Bot"
+COMPARE_FILE_LIMIT = 300  # the compare API returns at most 300 files: more means "unknown"
+
+
+async def changed_files_between(
+    token: str, owner: str, repo: str, base: str, head: str
+) -> set[str] | None:
+    """Names of the files that differ between two commits of a PR, or None when that cannot be
+    said reliably (force-push so `base` is gone, 300+ files, any error). None means: review
+    everything. Never raises."""
+    try:
+        async with github_client() as client:
+            response = await get_with_retry(
+                client,
+                f"/repos/{owner}/{repo}/compare/{base}...{head}",
+                params={"per_page": COMPARE_FILE_LIMIT},
+                headers=_headers(token),
+                attempts=2,
+            )
+        data = response.json()
+        files = data.get("files")
+        if not isinstance(files, list) or len(files) >= COMPARE_FILE_LIMIT:
+            return None
+        if data.get("status") not in ("ahead", "identical"):
+            return None  # diverged or behind: a rebase or force-push rewrote the history
+        return {str(f["filename"]) for f in files if isinstance(f, dict) and "filename" in f}
+    except Exception as exc:
+        logger.warning("compare_failed", error=type(exc).__name__)
+        return None
+
+
 class ReviewComment(BaseModel):
     path: str
     line: int
     body: str
-    side: str = "RIGHT"  # comment on the new version of the file
+    side: str = "RIGHT"  # RIGHT = new version of the file, LEFT = a deleted line (old numbers)
+    start_line: int | None = None  # set for a multi-line comment: it covers start_line..line
+    start_side: str | None = None
 
 
 class PostedComment(BaseModel):
@@ -130,7 +183,7 @@ async def post_review(
         "commit_id": commit_id,
         "event": "COMMENT",
         "body": body,
-        "comments": [c.model_dump() for c in comments],
+        "comments": [c.model_dump(exclude_none=True) for c in comments],
     }
     async with github_client(REVIEW_TIMEOUT) as client:
         response = await client.post(
@@ -247,6 +300,18 @@ async def get_pr_head_sha(token: str, owner: str, repo: str, number: int) -> str
             client, f"/repos/{owner}/{repo}/pulls/{number}", headers=_headers(token)
         )
     return str(response.json()["head"]["sha"])
+
+
+async def get_pr_refs(token: str, owner: str, repo: str, number: int) -> tuple[str, str | None]:
+    """(head sha, base sha) of the PR right now."""
+    async with github_client() as client:
+        response = await get_with_retry(
+            client, f"/repos/{owner}/{repo}/pulls/{number}", headers=_headers(token)
+        )
+    data = response.json()
+    base = data.get("base")
+    base_sha = base.get("sha") if isinstance(base, dict) else None
+    return str(data["head"]["sha"]), base_sha if isinstance(base_sha, str) else None
 
 
 async def review_exists(

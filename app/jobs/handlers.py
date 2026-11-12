@@ -8,6 +8,7 @@ not post a second review (see _post_once), and it will not post for a superseded
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -25,8 +26,11 @@ from app.github.advisories import create_draft_advisory
 from app.github.auth import get_installation_token, invalidate_installation_token
 from app.github.client import (
     ReviewComment,
+    changed_files_between,
+    create_check_run,
     get_collaborator_permission,
     get_pr_head_sha,
+    get_pr_refs,
     list_pr_files,
     post_pr_comment,
     post_review,
@@ -35,8 +39,10 @@ from app.github.client import (
     review_exists,
 )
 from app.github.context import fetch_context_files
+from app.github.repo_config import IGNORED_REASON, fetch_repo_config
 from app.jobs.errors import MODEL, JobFailure, classify
 from app.jobs.payload import ConfirmJobPayload, ReviewJobPayload
+from app.jobs.queue import enqueue_rerun
 from app.review.aggregate import MERGED, OVER_CAP
 from app.review.architecture import (
     ArchitectureFinding,
@@ -52,6 +58,7 @@ from app.review.graph import ReviewLimits, ReviewOutcome, resume_review, review_
 from app.review.llm import Reviewer, build_chat_model, build_review_setup, load_prompt
 from app.review.render import (
     render_architecture_notes,
+    render_check_output,
     render_comment,
     render_confirmed_summary,
     render_fallback_summary,
@@ -65,6 +72,7 @@ from app.review.visibility import PRIVATE_DELIVERED, PRIVATE_FAILED, PRIVATE_SEV
 logger = structlog.get_logger()
 
 FAILURE_COMMENT = "Review failed. Push a new commit to try again."
+BUDGET_COMMENT = "Review skipped: the daily review budget is used up. Push again tomorrow."
 EXPIRED_COMMENT = (
     "Held findings expired without a maintainer's confirmation and were not posted. "
     "Push a new commit to run the review again."
@@ -75,6 +83,8 @@ DISMISSED_REPLY = "Marked as a false positive by a maintainer. This thread is re
 DISMISSED_HOLD_COMMENT = "A maintainer dismissed the held findings. They were not posted."
 NOT_ALLOWED_COMMENT = "Only a collaborator with write access can confirm a held review."
 AUTHOR_COMMENT = "The author of a pull request cannot confirm their own review."
+REVIEW_AUTHOR_COMMENT = "The author of a pull request cannot re-run its review."
+REVIEW_NOT_ALLOWED_COMMENT = "Only a collaborator with write access can re-run a review."
 MAX_REFUSAL_REPLIES_PER_RUN = 3  # many different people refused: stop answering, never reply-spam
 
 
@@ -304,7 +314,11 @@ async def _run(
         logger.info("run_skipped", reason="superseded or missing")
         return "superseded"
 
+    if await _over_daily_budget(payload, settings):
+        return "skipped_budget"
+
     token = await get_installation_token(payload.installation_id)
+    repo_config = await fetch_repo_config(token, payload.owner, payload.repo, payload.base_sha)
     files = await list_pr_files(
         token, payload.owner, payload.repo, payload.number, settings.max_listed_pages
     )
@@ -315,6 +329,8 @@ async def _run(
         skipped.append(("(more files)", "PR has more files than the listing limit"))
     for changed in files:
         reason = skip_reason(changed.filename, changed.status) or changed.skip_reason
+        if reason is None and repo_config.ignores(changed.filename):
+            reason = IGNORED_REASON
         if reason is None and changed.patch is not None:
             try:
                 parsed_files[changed.filename] = parse_patch(changed.filename, changed.patch)
@@ -334,13 +350,20 @@ async def _run(
             lambda s: runs.list_known_findings(s, payload.repo_full_name, payload.number, run_id)
         )
     )
+    review_files, incremental_note = await _incremental_scope(
+        payload, token, parsed_files, settings
+    )
     async with _checkpointer_scope(settings) as saver:
         if saver is not None:
             await _drop_superseded_holds(saver, payload)
+        all_reviewers = build_reviewers()
+        if isinstance(all_reviewers, Mapping):  # (tests may supply one bare reviewer)
+            chosen = repo_config.choose_agents(list(all_reviewers))
+            all_reviewers = {name: all_reviewers[name] for name in chosen}
         outcome = await review_diff(
-            parsed_files,
-            build_reviewers(),
-            ReviewLimits.from_settings(settings),
+            review_files,
+            all_reviewers,
+            repo_config.tighten(ReviewLimits.from_settings(settings)),
             triager=build_triager(),
             run_name=f"review {payload.repo_full_name}#{payload.number}",
             metadata={
@@ -364,6 +387,7 @@ async def _run(
         notes, arch_rows = await _architecture_step(
             payload, token, parsed_files, outcome, private_dropped, settings
         )
+        notes = [*notes, *incremental_note]
         if outcome.pending:
             # The held findings are neither saved nor posted until confirmed. The rest of the
             # review is NOT held (ADR 0007, amended): it goes out now, once.
@@ -390,6 +414,8 @@ async def _run(
     _record("architecture", lambda s: runs.save_architecture_rows(s, run_id, arch_rows))
     summary, comments = _render(outcome, public=payload.is_public, notes=notes)
     result = await _post_once(payload, token, summary, comments)
+    if result == "posted" and settings.check_run_enabled:
+        await _post_check_run(payload, token, outcome)
     if result != "superseded":
         _critical(lambda s: runs.finish_run(s, run_id, status=runs.OK))
     if result == "posted":
@@ -513,6 +539,19 @@ async def _post_once(
     return "posted"
 
 
+def to_review_comment(f: Finding) -> ReviewComment:
+    """A finding as GitHub's comment payload: a range only when start_line is set (and earlier)."""
+    ranged = f.start_line is not None and f.start_line < f.line
+    return ReviewComment(
+        path=f.file_path,
+        line=f.line,
+        body=render_comment(f),
+        side=f.side,
+        start_line=f.start_line if ranged else None,
+        start_side=f.side if ranged else None,
+    )
+
+
 def _render(
     outcome: ReviewOutcome,
     held: int = 0,
@@ -535,11 +574,68 @@ def _render(
         public=public,
         notes=notes,
     )
-    comments = [
-        ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
-        for f in outcome.findings
-    ]
+    comments = [to_review_comment(f) for f in outcome.findings]
     return summary, comments
+
+
+async def _post_check_run(payload: ReviewJobPayload, token: str, outcome: ReviewOutcome) -> None:
+    """ADR 0010. Best effort: the review is already posted, so nothing here may fail the job."""
+    try:
+        output = render_check_output(outcome.findings, public=payload.is_public)
+        await create_check_run(token, payload.owner, payload.repo, payload.head_sha, output)
+    except Exception as exc:
+        logger.warning("check_run_not_created", error=type(exc).__name__)
+
+
+async def _incremental_scope(
+    payload: ReviewJobPayload,
+    token: str,
+    parsed_files: dict[str, ParsedFile],
+    settings: Settings,
+) -> tuple[dict[str, ParsedFile], list[str]]:
+    """10.31: the files to review, and a summary line saying so when that is fewer than all.
+
+    Only when enabled, and only when the PR's previous reviewed commit is known and GitHub can say
+    what changed since (`changed_files_between`). Anything uncertain reviews everything."""
+    if not settings.incremental_review_enabled:
+        return parsed_files, []
+    previous = _critical(
+        lambda s: runs.last_reviewed_head(s, payload.repo_full_name, payload.number, payload.run_id)
+    )
+    if previous is None or previous == payload.head_sha:
+        return parsed_files, []
+    changed = await changed_files_between(
+        token, payload.owner, payload.repo, previous, payload.head_sha
+    )
+    if changed is None:
+        return parsed_files, []
+    narrowed = {path: parsed for path, parsed in parsed_files.items() if path in changed}
+    logger.info("incremental_scope", total=len(parsed_files), reviewed=len(narrowed))
+    note = "Incremental review: only files changed since the last reviewed commit were examined."
+    return narrowed, [note]
+
+
+async def _over_daily_budget(payload: ReviewJobPayload, settings: Settings) -> bool:
+    """10.34: when today's spend has reached MAX_COST_PER_DAY_USD, say so once and skip the run.
+
+    Checked BEFORE any model call. A run that is already past this point is allowed to finish, so
+    the real total can exceed the cap by at most the runs in flight. The notice is static text.
+    """
+    cap = settings.max_cost_per_day_usd
+    if cap <= 0:
+        return False
+    spent = _critical(lambda s: runs.cost_since(s, runs.day_start(datetime.now(UTC))))
+    if spent < Decimal(str(cap)):
+        return False
+    logger.warning("daily_budget_reached", spent_usd=float(spent), cap_usd=cap)
+    _critical(lambda s: runs.finish_run(s, payload.run_id, status=runs.SKIPPED))
+    try:
+        token = await get_installation_token(payload.installation_id)
+        await post_pr_comment(token, payload.owner, payload.repo, payload.number, BUDGET_COMMENT)
+    except Exception as exc:
+        _invalidate_on_401(exc, payload.installation_id)
+        logger.warning("budget_notice_not_posted", error=type(exc).__name__)
+    return True
 
 
 async def post_failure_notice(payload: ReviewJobPayload) -> None:
@@ -565,6 +661,19 @@ async def run_confirm_job(payload: ConfirmJobPayload) -> str:
         raise
 
 
+async def _rerun(payload: ConfirmJobPayload, token: str, settings: Settings) -> str:
+    """/review from an allowed maintainer: queue the PR's failed, superseded or skipped review
+    again. Only when the run is still for the PR's CURRENT head (a newer push has its own run)."""
+    head, base = await get_pr_refs(token, payload.owner, payload.repo, payload.number)
+    run = _critical(lambda s: runs.get_run(s, payload.run_id))
+    if run is None or run.head_sha != head:
+        logger.info("review_command_ignored", reason="not_current_head")
+        return "ignored"
+    queued = _critical(lambda s: enqueue_rerun(s, run, payload, base, settings))
+    logger.info("review_command", queued=queued)
+    return "requeued" if queued else "ignored"
+
+
 async def _confirm(payload: ConfirmJobPayload) -> str:
     run_id = payload.run_id
     structlog.contextvars.bind_contextvars(run_id=run_id, pr_number=payload.number)
@@ -576,9 +685,8 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         payload.commenter_login.lower()
     ):
         logger.info("confirm_ignored", reason="author")
-        await _refuse(
-            payload, await get_installation_token(payload.installation_id), AUTHOR_COMMENT
-        )
+        text = REVIEW_AUTHOR_COMMENT if payload.command == "review" else AUTHOR_COMMENT
+        await _refuse(payload, await get_installation_token(payload.installation_id), text)
         return "ignored"
 
     # 1. Permission, asked of GitHub (the comment's own author_association is only a hint).
@@ -588,8 +696,12 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
     )
     if not is_allowed(permission):
         logger.info("confirm_ignored", reason="not_allowed")
-        await _refuse(payload, token, NOT_ALLOWED_COMMENT)
+        denied = REVIEW_NOT_ALLOWED_COMMENT if payload.command == "review" else NOT_ALLOWED_COMMENT
+        await _refuse(payload, token, denied)
         return "ignored"  # not an error: a retry would not change the answer
+
+    if payload.command == "review":
+        return await _rerun(payload, token, settings)
 
     if payload.command == "dismiss":
         return await _dismiss(payload, token, settings)
@@ -662,10 +774,7 @@ async def _confirm(payload: ConfirmJobPayload) -> str:
         if follow_up:
             confirmed = [f for f in outcome.findings if f.severity in settings.held_severities]
             summary = render_confirmed_summary(confirmed, public)
-            comments = [
-                ReviewComment(path=f.file_path, line=f.line, body=render_comment(f))
-                for f in confirmed
-            ]
+            comments = [to_review_comment(f) for f in confirmed]
         else:
             summary, comments = _render(outcome, public=public)
         result = await _post_once(review, token, summary, comments, held=follow_up)

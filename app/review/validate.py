@@ -9,6 +9,23 @@ from app.review.schemas import AGENT_CATEGORIES, Finding, ReviewFinding
 logger = structlog.get_logger()
 
 Dropped = tuple[Finding, str]  # (finding, reason)
+MAX_RANGE_LINES = 20
+
+
+def _range_problem(finding: Finding, parsed: ParsedFile) -> str | None:
+    """Why this finding's line (or range) cannot carry a GitHub comment, or None if it can.
+
+    A range must lie entirely on one side and on lines that are in the diff: a gap between hunks
+    is not in the set, so a range can never span one (GitHub rejects those with a 422)."""
+    allowed = parsed.removed_lines if finding.side == "LEFT" else parsed.commentable_lines
+    start = finding.start_line if finding.start_line is not None else finding.line
+    if start > finding.line:
+        return "range start after end"
+    if finding.line - start + 1 > MAX_RANGE_LINES:
+        return "range too long"
+    if all(n in allowed for n in range(start, finding.line + 1)):
+        return None
+    return "line not commentable"
 
 
 def partition_findings(
@@ -27,8 +44,8 @@ def partition_findings(
         parsed = reviewed.get(finding.file_path)
         if parsed is None:
             reason = "file not reviewed"
-        elif finding.line not in parsed.commentable_lines:
-            reason = "line not commentable"
+        elif (problem := _range_problem(finding, parsed)) is not None:
+            reason = problem
         elif (
             isinstance(finding, ReviewFinding)
             and finding.category not in AGENT_CATEGORIES[finding.agent]

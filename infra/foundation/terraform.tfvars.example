@@ -1,0 +1,4 @@
+github_repository  = "your-github-user/your-repo"
+domain_name        = "example.com"
+enable_certificate = false
+alert_email        = ""

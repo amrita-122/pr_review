@@ -198,8 +198,7 @@ comment on a PR in an installed repo (on a public repo: any GitHub account) can 
   so the bot can announce a vulnerability before it is fixed and make it easier to exploit. ADR 0007's `/confirm`
   controls when it is posted, not who can see it.
 - Planned mitigation: read `repository.private`; on public repos high/critical security findings go to a private draft
-  security advisory and the PR gets a neutral line only. Not built yet. Until 10.20 is done, do not install the App
-  on public repos with real code.
+  security advisory and the PR gets a neutral line only. 
 - New residual risks to record when built: the neutral note still signals that a review finished; advisories can be
   disabled per repo; the extra `repository_advisories: write` permission widens the App's reach.
 - Architecture agent (ADR 0009): repo files are untrusted input in a second place (not only the diff). It needs the
@@ -244,3 +243,23 @@ What is still open, in rough order of importance:
    redelivered it after 30 days.
 9. **Unproven on Postgres in CI.** The 8 skipped tests are the real-Postgres ones; the Phase 10 migrations
    (`d94f...` to `a9e3...`) were only exercised through SQLite models. Run `alembic upgrade head` on a copy first.
+
+10. **Optional features added after Phase 10's four branches (10.27 to 10.34); all are off or unlimited by default.**
+    - *Per-repo `.review-bot.yml`* is read from the PR's BASE commit only, so a PR cannot change its own review. It can
+      only tighten (fewer agents, more ignored paths, lower caps), so it cannot raise a cap or enable the private
+      channel. But a repo's own maintainers can still configure the bot to ignore paths such as `auth/**`: that is
+      their choice and is not logged to the PR. Files are size-capped, `safe_load`ed, and refused if they use YAML
+      anchors.
+    - *Secret scanner* findings never contain the secret. Regex and entropy are not complete: a miss is not assurance.
+    - *Suggested changes* (`replacement_code`) are one-click commits, so they are held to a stricter policy than prose.
+      Prompts do not ask for them yet, so they are inactive until measured.
+    - *`/review`* needs write access, and the PR author is refused, so an author cannot use it to get around the
+      per-author rate limit. Refused users are recorded per run like `/confirm`.
+    - *Budgets and rate limit*: the daily budget is checked before each run, so runs already in flight can overshoot it.
+      Architecture-agent token cost may not be in `cost_usd` yet (unverified), so the day total can undercount.
+      A rate-limited push leaves a `skipped` run behind; with no `/review` it is simply not reviewed.
+    - *Alert webhook* is an operator secret; messages contain a run id and a failure class, no PR content.
+    - *Incremental review* does not retry a file whose review failed earlier (the summary still reported it then).
+    - *Check Run* (ADR 0010, proposed) is a new public surface and a new App permission. It repeats only findings that
+      are already posted inline, and never uses `failure`, so it cannot block a merge.
+    - *Stored rationale*: `findings.rationale` keeps the text of POSTED findings only (already public PR text).

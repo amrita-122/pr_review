@@ -1,0 +1,42 @@
+name: "Infra CI"
+
+# Checks the Terraform without touching AWS: formatting, validity, and a security scan (checkov).
+# `terraform plan/apply` are run by hand (see infra/README.md): a CI role that can apply would need near-admin
+# rights, which is a bigger risk than the convenience is worth for a single-owner project.
+on:
+  pull_request:
+    paths: ["infra/**", ".github/workflows/infra-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.1"
+      - run: terraform fmt -check -recursive infra
+      - name: Validate both stacks
+        run: |
+          for stack in foundation app; do
+            terraform -chdir=infra/$stack init -backend=false -input=false
+            terraform -chdir=infra/$stack validate
+          done
+
+  checkov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Skips and their reasons live in infra/.checkov.yaml.
+      - run: |
+          pip install checkov
+          checkov -d infra --config-file infra/.checkov.yaml

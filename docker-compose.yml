@@ -1,0 +1,57 @@
+# Local smoke test of the production image: Postgres + migration + web + worker.
+#   docker compose up --build
+#   curl http://127.0.0.1:8000/health
+#   docker compose down -v        (removes the throwaway database too)
+#
+# Secrets come from your local .env (never baked into the image: see .dockerignore). Only DATABASE_URL is
+# overridden here, so the containers talk to the compose database, not one on your machine.
+# This is NOT the AWS setup (that is infra/); it exists to catch image problems before AWS.
+
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/pr_review
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pr_review
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pr_review"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # The one-off migration, like the "pre-deploy command" it replaces. It must finish before web/worker start.
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "app.jobs.worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # Longer than SHUTDOWN_GRACE_SECONDS (30), like the ECS stopTimeout we will set (step 11.6).
+    stop_grace_period: 60s

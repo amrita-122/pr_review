@@ -12,6 +12,7 @@ HANDLED_ACTIONS = frozenset({"opened", "reopened", "synchronize", "ready_for_rev
 CLOSED_ACTION = "closed"  # merged or not: either way the PR is finished
 CONFIRM_COMMAND = "/confirm"
 DISMISS_COMMAND = "/dismiss"
+REVIEW_COMMAND = "/review"  # re-run a review that failed, was skipped or was rate limited
 REVIEW_COMMENT_EVENT = "pull_request_review_comment"
 # A human GitHub login. It ends up in a URL path (/collaborators/{login}/permission).
 LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}$")
@@ -37,8 +38,18 @@ class Head(BaseModel):
     sha: str
 
 
+class Base(BaseModel):
+    sha: str
+
+
+class PrUser(BaseModel):
+    login: str
+
+
 class PullRequest(BaseModel):
+    user: PrUser | None = None  # the PR author; only the login is read, and only if well-formed
     head: Head
+    base: Base | None = None  # the commit the PR merges into: where trusted repo config is read
     # When GitHub last changed this PR. Used only to order out-of-order deliveries of pushes.
     updated_at: datetime | None = None
     draft: bool = False  # a draft is work in progress: reviewed only if REVIEW_DRAFTS is on
@@ -68,6 +79,18 @@ class PullRequestEvent(BaseModel):
     @property
     def head_sha(self) -> str:
         return self.pull_request.head.sha
+
+    @property
+    def author_login(self) -> str | None:
+        user = self.pull_request.user
+        if user is None or LOGIN_PATTERN.fullmatch(user.login) is None:
+            return None
+        return user.login
+
+    @property
+    def base_sha(self) -> str | None:
+        base = self.pull_request.base
+        return base.sha if base is not None else None
 
     @property
     def repo_private(self) -> bool | None:
@@ -229,6 +252,8 @@ def command_of(body: str) -> str | None:
         return "confirm"
     if text == DISMISS_COMMAND:
         return "dismiss"
+    if text == REVIEW_COMMAND:
+        return "review"
     return None
 
 

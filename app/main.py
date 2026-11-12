@@ -17,6 +17,7 @@ from app.github.webhooks import (
     HANDLED_EVENT,
     ISSUE_COMMENT_EVENT,
     REVIEW_COMMENT_EVENT,
+    IssueCommentEvent,
     parse_issue_comment_event,
     parse_pull_request_event,
     parse_review_comment_event,
@@ -148,12 +149,16 @@ def _handle_issue_comment(session: Session, body: bytes, delivery_id: str | None
     except ValidationError:
         raise HTTPException(status_code=422, detail="Invalid payload") from None
 
-    if not settings.confirmation_enabled or not comment_event.is_command_request:
+    if not comment_event.is_command_request:
         return {"status": "ignored"}
     if delivery_id is None:
         raise HTTPException(status_code=400, detail="Missing X-GitHub-Delivery")
-
     repo = f"{comment_event.owner}/{comment_event.repo}"
+    if comment_event.command == "review":
+        return _handle_review_command(session, comment_event, repo, delivery_id)
+    if not settings.confirmation_enabled:
+        return {"status": "ignored"}
+
     held = runs.get_awaiting_for_pr(session, repo, comment_event.number)
     if held is None:
         return {"status": "ignored"}  # not recorded: a later redelivery may still be useful
@@ -178,6 +183,41 @@ def _handle_issue_comment(session: Session, body: bytes, delivery_id: str | None
     )
     enqueue_confirm(session, payload, settings)
     session.commit()  # delivery + job together, like a review
+    return {"status": "accepted"}
+
+
+def _handle_review_command(
+    session: Session, event: IssueCommentEvent, repo: str, delivery_id: str
+) -> dict[str, str]:
+    """`/review`: ask for the PR's failed, superseded or rate-limited review to run again.
+
+    Ignored (before any row is written) unless the PR's newest run is in such a state, so the
+    comment of a stranger on a healthy PR costs nothing. Who may ask is decided by the worker."""
+    settings = get_settings()
+    if not settings.review_command_enabled:
+        return {"status": "ignored"}
+    run = runs.latest_for_pr(session, repo, event.number)
+    if run is None or run.status not in runs.RERUNNABLE:
+        return {"status": "ignored"}
+    if runs.is_denied(session, run.id, event.login) or (
+        runs.denial_count(session, run.id) >= MAX_DENIED_LOGINS_PER_RUN
+    ):
+        return {"status": "ignored"}
+    if not record_delivery(session, delivery_id, ISSUE_COMMENT_EVENT, event.action):
+        return {"status": "duplicate"}
+    payload = ConfirmJobPayload(
+        run_id=run.id,
+        installation_id=event.installation_id,
+        owner=event.owner,
+        repo=event.repo,
+        number=event.number,
+        comment_id=event.comment.id,
+        commenter_login=event.login,
+        author_login=event.author_login,
+        command="review",
+    )
+    enqueue_confirm(session, payload, settings)
+    session.commit()
     return {"status": "accepted"}
 
 

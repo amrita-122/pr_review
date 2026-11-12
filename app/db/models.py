@@ -60,6 +60,8 @@ class ReviewRun(Base):
     status: Mapped[str] = mapped_column(String)
     # Was the repo private when the webhook arrived? NULL = unknown = treated as public.
     repo_private: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # The PR author (a validated GitHub login): what the per-author rate limit counts.
+    author_login: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # High/critical security findings sent to the private channel (or that failed to be) this run.
     private_findings: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # The webhook's pull_request.updated_at for this head: orders pushes that arrive out of order.
@@ -113,6 +115,8 @@ class FindingRow(Base):
     severity: Mapped[str] = mapped_column(String)
     category: Mapped[str] = mapped_column(String)
     title: Mapped[str] = mapped_column(String)
+    # Only for POSTED findings (already public PR text): what /explain answers with.
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     posted: Mapped[bool] = mapped_column(Boolean)
     drop_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     # Where GitHub put it (10.14): needed to reply to it, resolve its thread, or recognise it later.
