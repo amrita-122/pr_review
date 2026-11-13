@@ -430,14 +430,19 @@ cost control
       `AWS_DEPLOY_ROLE_ARN` and a `production` environment with a required reviewer, and the changes committed and pushed.) Pipeline: GitHub Actions deploy workflow using OIDC (no stored AWS keys): build, Trivy scan, push, migration
       as a one-off ECS task, service update, wait for stable. `terraform plan` on PRs, `apply` on merge behind a protected
       environment, `checkov` on the Terraform.
-- [ ] 11.10 (Owner decision 2026-11-12: the earlier Phase 6 proofs (worker kill, redeliver, five quick pushes), run on
-      Railway, are counted for the ECS tests; they are not repeated. STILL TO DO: switch the webhook URL to the new
-      domain once HTTPS exists and confirm one sandbox PR gets its review from AWS.) Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
+- [x] 11.10 (DONE 2026-11-13: webhook URL is https://review.triumphinfrastructure.com/webhooks/github (the domain stays at
+      Hostinger; only its nameservers point at the Route53 zone, no transfer). Sandbox PR #23 got its review from AWS: one
+      job, about 9 s, $0.036 (12,782 tokens in, 1,069 out), 4 inline comments, `job_settled` outcome `done`. A redelivery
+      queued no job and posted no second review (3 bot reviews on the PR before and after). Owner decision 2026-11-12: the
+      earlier Phase 6 proofs (worker kill, redeliver, five quick pushes), run on Railway, are counted for the ECS tests;
+      they were not repeated. The web log does not print the `{"status": ...}` body, so "duplicate" is inferred from 202 plus
+      no job.) Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
       parallel run): set the GitHub App's webhook URL to the new domain; open a sandbox PR; click Redeliver (no second
       review). Repeat the Phase 6 proofs on ECS: stop the worker task mid-review and the review still posts after the
       restart; five quick pushes give one review on the latest commit. Keep `PRIVATE_CHANNEL=none` and install the App
       on sandbox or private repos only until 10.21 is done by hand.
-- [ ] 11.10b Retire Railway (only after 11.10 passes): delete the Railway project, remove `railway.json` and
+- [ ] 11.10b (PART DONE 2026-11-13: `railway.json` and `railway.worker.json` removed. STILL TO DO by the owner: rotate the
+      secrets, then delete the Railway project.) Retire Railway (only after 11.10 passes): delete the Railway project, remove `railway.json` and
       `railway.worker.json`, and rotate the secrets that lived there (webhook secret in the App settings and in Secrets
       Manager, a new GitHub App private key, a new Anthropic key). Old ADR/BUILD-LOG mentions of Railway stay as history.
 - [ ] 11.11 Hardening review: RDS is not public, no wildcard IAM, security-group audit, secrets not in state or logs, and
