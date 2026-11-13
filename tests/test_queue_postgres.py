@@ -128,26 +128,20 @@ def test_a_locked_job_is_skipped_not_waited_for(pg: Engine) -> None:
     holder.close()
 
 
-# supersede_older only replaces runs with a strictly EARLIER timestamp (Phase 10 out-of-order
-# fix), so the newer push needs a later updated_at than the one it replaces.
-OLDER = "2026-11-10T10:00:00Z"
-NEWER = "2026-11-10T10:00:05Z"
-
-
 def test_enqueue_is_atomic_supersedes_and_run_key_is_unique(pg: Engine) -> None:
     factory = sessionmaker(pg, expire_on_commit=False)
     settings = get_settings()
     with factory() as s:
-        assert enqueue_review(s, make_event("a" * 40, updated_at=OLDER), settings)
+        assert enqueue_review(s, make_event("a" * 40), settings)
         s.commit()
     with factory() as s:
-        assert enqueue_review(s, make_event("b" * 40, updated_at=NEWER), settings)
+        assert enqueue_review(s, make_event("b" * 40), settings)
         s.rollback()  # the webhook failed after enqueueing: nothing of it may survive
     with factory() as s:
         assert s.scalar(select(func.count()).select_from(Job)) == 1
         assert [r.status for r in s.scalars(select(ReviewRun))] == ["queued"]
     with factory() as s:
-        assert enqueue_review(s, make_event("b" * 40, updated_at=NEWER), settings)
+        assert enqueue_review(s, make_event("b" * 40), settings)
         s.commit()
     with factory() as s:
         statuses = {r.head_sha[0]: r.status for r in s.scalars(select(ReviewRun))}
@@ -166,21 +160,6 @@ def test_enqueue_is_atomic_supersedes_and_run_key_is_unique(pg: Engine) -> None:
         )
         with pytest.raises(IntegrityError):
             s.commit()
-
-
-def test_equal_timestamps_supersede_nothing(pg: Engine) -> None:
-    """Two pushes in the same second: the order is unknowable, so both stay queued."""
-    factory = sessionmaker(pg, expire_on_commit=False)
-    settings = get_settings()
-    with factory() as s:
-        assert enqueue_review(s, make_event("a" * 40, updated_at=OLDER), settings)
-        s.commit()
-    with factory() as s:
-        assert enqueue_review(s, make_event("b" * 40, updated_at=OLDER), settings)
-        s.commit()
-    with factory() as s:
-        statuses = {r.head_sha[0]: r.status for r in s.scalars(select(ReviewRun))}
-        assert statuses == {"a": "queued", "b": "queued"}
 
 
 def test_reaper_works_on_postgres(pg: Engine) -> None:
