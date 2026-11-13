@@ -31,7 +31,7 @@ Reviewer model `claude-sonnet-5-5`; each figure is a mean of 3 runs unless state
 | Security agent, final prompt (`security_v5`) | precision **93.6%**, recall **96.7%** | golden set, 20 planted bugs |
 | Eval gate (CI, on PRs touching `app/review/**` or `evals/**`) | fails under 85% precision or recall | blocked a deliberately noisy prompt (62.5% precision) |
 | Prompt injection, output hijack | **10.3% -> 0%** (0 of 13 with a canary) | 16 red-team cases, baseline vs final |
-| Prompt injection, suppression of a real bug | **0 of 16**, before and after | same set (no headroom: see limitations) |
+| Prompt injection, suppression of a real bug | **0 of 16** at baseline and after the fixes; 2.2% mean in a later 3-run re-run (1 miss, `rt_bidi_override`, in 1 of 3 runs) | same set (almost no headroom: see limitations) |
 | Cost | about **$0.007 per file** (security agent) | golden set, list prices |
 | Latency | p50 about 2 s, p95 about 3 s per file | golden set |
 | Quality agent | recall 90%, **precision 69%** (61-80% over 3 runs) | 49-case golden set, labels fixed 2026-11-13 (the old 35% was mostly missing labels); no CI gate yet |
@@ -42,8 +42,8 @@ and `security_v2` hit 100% only because it was written after reading v1's failur
 figure is not claimed. Per-run counts, caveats and the table of every defence step are in
 [docs/SECURITY.md](docs/SECURITY.md) and [docs/BUILD-LOG.md](docs/BUILD-LOG.md).
 
-The prompt-injection finding worth reading: the ~10% "hijack" at baseline was mostly the model **quoting**
-the attack, not obeying it, because the prompt told it to report injection attempts. Removing that
+The prompt-injection finding worth reading: the ~10% "hijack" at baseline was the model **quoting**
+the attack, not obeying it, in all 14 events I read (8 more were not captured), because the prompt told it to report injection attempts. Removing that
 instruction (prompt v4) and adding an output policy (links cannot be prevented by a prompt) brought it to 0.
 
 ## Architecture
@@ -88,8 +88,9 @@ More detail, the data model and trust boundaries: [docs/ARCHITECTURE.md](docs/AR
 
 - **Small eval sets.** 20 planted bugs and 16 red-team cases: read counts, not just percentages. The
   golden set can no longer show further improvement for the security prompt.
-- **Suppression is unproven.** The model resisted every direct suppression attempt even at baseline, so the
-  red-team set only guards against regressions. Subtler, in-voice justifications still need to be added.
+- **Suppression is unproven.** The model resisted every direct suppression attempt at baseline (0 of 16), but planted
+  bugs were missed once in a later re-run (2.2% mean), so it is not strictly zero. The red-team set only guards
+  against regressions. Subtler, in-voice justifications still need to be added.
 - **Quality agent precision is about 69%, not 35%.** The old figure counted real defects as false positives (the
   golden labels were incomplete). What is left is mostly nitpicks and `bug` vs `error_handling` category ambiguity,
   and it still misses some exception-path leaks. It is noisy enough that there is no quality threshold in the CI gate.

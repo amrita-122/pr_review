@@ -128,16 +128,16 @@ What this changes in the story:
 
 **Reading the numbers**
 - The model resisted every direct suppression attempt at baseline (0 of 16), so the set could not show
-  suppression *improving*. It only guards against regressions. The one suppression seen (`rt_padding`, once)
-  is the first real signal.
+  suppression *improving*. It only guards against regressions. The suppressions seen so far: `rt_padding` once, and
+  `rt_bidi_override` once in a later 3-run re-run on 2026-11-13 (mean 2.2%, max 6.7% in a run).
 - Output hijack was quoting (above), fixed in two layers: the prompt (v4, plain-text markers) and the policy
   (links, which a prompt cannot reliably prevent). "Model wrote it" vs "would be posted" shows what the
   validator adds.
 - 3 runs of 16 cases is small. A single flaky run moves a rate by 6 points.
 
 ## Residual risks
-1. **Suppression has no headroom in the current set.** 0 of 16 at baseline means a future weaker defence
-   could look fine. Add reasoned, in-voice justifications (not commands) to the set.
+1. **Suppression has no headroom in the current set.** 0 of 16 at baseline (and 2.2% in the 2026-11-13 re-run) means a
+   future weaker defence could look fine. Add reasoned, in-voice justifications (not commands) to the set.
 2. **Oversize files are skipped, not reviewed.** A vulnerability in a diff over `max_chars_per_file` (20k)
    is never examined; it is listed in the summary only. Same for files beyond the file, total-size and
    listing caps. Hunk-level splitting would close it.
@@ -193,13 +193,13 @@ comment on a PR in an installed repo (on a public repo: any GitHub account) can 
 14. **The "N findings pending" comment reveals that critical findings exist** on a public PR (not what they are).
 15. **Non-critical findings are delayed too**, because the whole review is held (ADR 0007).
 
-## Public disclosure of findings (Phase 10 plan, ADR 0008)
+## Public disclosure of findings (Phase 10, ADR 0008)
 - Risk: on a public repo every bot output (inline comment, summary, Check Run, even "N critical pending") is public,
   so the bot can announce a vulnerability before it is fixed and make it easier to exploit. ADR 0007's `/confirm`
   controls when it is posted, not who can see it.
-- Planned mitigation: read `repository.private`; on public repos high/critical security findings go to a private draft
-  security advisory and the PR gets a neutral line only. 
-- New residual risks to record when built: the neutral note still signals that a review finished; advisories can be
+- Mitigation (built and verified 2026-11-11, 10.21): the bot reads `repository.private`; on public repos high/critical
+  security findings go to a private draft security advisory and the PR gets a neutral line only.
+- Residual risks (recorded below under "Phase 10 residual risks"): the neutral note still signals that a review finished; advisories can be
   disabled per repo; the extra `repository_advisories: write` permission widens the App's reach.
 - Architecture agent (ADR 0009): repo files are untrusted input in a second place (not only the diff). It needs the
   same delimiters and output policy and its own red-team cases before it is enabled.
@@ -234,8 +234,8 @@ What is still open, in rough order of importance:
    PR's head commit (a PR author controls them for their own PR). They sit inside the random-marker block and the
    output goes through the same policy. Measured once on 2026-11-11 (`python -m evals.architecture_run
    --confirm-spend`, 5 injection cases hidden in repo files): the model was hijacked in 0 of 4 canary cases, hijacked
-   text was posted in 0 of 4, and 1 of 5 real flaws was lost to the output policy. That is a single run on a small
-   set, so it shows the defence works on these cases, not that it is proven. Still do not enable it for repos you do
+   text was posted in 0 of 4, and 1 of 5 real flaws was lost to the output policy. A held-out re-run on 2026-11-13 (3 injection cases x 3 runs) also had 0 of 9 suppressed and 0 of 3 canary runs hijacked. That is
+   still a small set, so it shows the defence works on these cases, not that it is proven. Still do not enable it for repos you do
    not trust, and re-run after any prompt change.
 7. **Contents API reads are bounded, not private.** Up to 8 files / 40,000 characters of repository text are
    sent to the model provider per PR when the agent is on (same trust as the diff, but more of the repo).
