@@ -1,9 +1,13 @@
 """Measure the architecture agent on its golden and red-team cases (step 10.25).
 
-    uv run python -m evals.architecture_run --confirm-spend [--runs 3]
+    uv run python -m evals.architecture_run --confirm-spend [--runs 3] [--check] [--max-cost 3]
 
 This calls the REAL model (money): it refuses to run without --confirm-spend. The scoring is pure
 and unit-tested with a fake agent (tests/test_architecture_eval.py).
+
+--check exits 1 when a number misses the "architecture" block of evals/thresholds.json (10.26).
+--max-cost aborts the run when the estimated spend passes the cap (USD). Tokens and the estimated
+cost are saved in the report ("usage"); cost is per eval case, a small PR, so a big PR costs more.
 
 Metrics (counts are printed next to the rates because the set is small):
 - recall:        flaw cases where a kept finding matches (a keyword in title or rationale).
@@ -20,8 +24,11 @@ import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from app.config import get_settings
 from app.diff.parse import ParsedFile, parse_patch
@@ -32,10 +39,14 @@ from app.review.architecture import (
     validate_architecture,
 )
 from app.review.context import ContextFile
+from app.review.cost import PriceTable, cost_from_metadata
 from app.review.llm import build_chat_model, load_prompt
 from evals.architecture_cases import CASES, ArchCase
+from evals.run import CostCapExceeded
 
 RESULTS_DIR = Path(__file__).parent / "results"
+THRESHOLDS_FILE = Path(__file__).parent / "thresholds.json"
+DEFAULT_MAX_COST_USD = Decimal("3")
 AgentFn = Callable[
     [Mapping[str, ParsedFile], list[ContextFile]], Awaitable[list[ArchitectureFinding]]
 ]
@@ -119,23 +130,93 @@ def score(results: Sequence[CaseResult]) -> dict[str, Any]:
     }  # fmt: skip
 
 
+# Reads the model usage so far: (tokens_in, tokens_out, estimated cost in USD).
+UsageProbe = Callable[[], tuple[int, int, Decimal]]
+
+
 async def run_all(
-    agent: AgentFn, cases: Sequence[ArchCase] = CASES, runs: int = 1
+    agent: AgentFn,
+    cases: Sequence[ArchCase] = CASES,
+    runs: int = 1,
+    usage_probe: UsageProbe | None = None,
+    max_cost: Decimal | None = None,
 ) -> dict[str, Any]:
     results: list[CaseResult] = []
     for _ in range(runs):
         for case in cases:
             results.append(await run_case(agent, case))
-    return {**score(results), "runs": runs}
+            if usage_probe is not None and max_cost is not None:
+                spent = usage_probe()[2]
+                if spent > max_cost:
+                    raise CostCapExceeded(f"estimated spend ${spent:.4f} passed cap ${max_cost}")
+    report: dict[str, Any] = {**score(results), "runs": runs}
+    if usage_probe is not None:
+        tokens_in, tokens_out, cost = usage_probe()
+        report["usage"] = {
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "cost_usd": str(cost),
+            "cost_usd_per_case": str(cost / len(results)) if results else None,
+        }
+    return report
 
 
-def build_real_agent() -> ArchitectureReviewer:
+def check_thresholds(report: Mapping[str, Any], thresholds: Mapping[str, Any]) -> list[str]:
+    """Failure messages (empty = the gate passes). A threshold set to null is not checked.
+
+    The cost limit stays null until a cost was measured; once it is set, a report with no cost
+    fails (we never pass a gate on a number we do not have).
+    """
+    failures: list[str] = []
+
+    def rate(metric: str) -> float | None:
+        value = report[metric]["rate"]
+        return None if value is None else float(value)
+
+    floor = thresholds.get("min_recall")
+    if floor is not None and ((got := rate("recall")) is None or got < floor):
+        failures.append(f"recall {got} is below the minimum {floor}")
+    for metric, key in (
+        ("false_alarms", "max_false_alarm_rate"),
+        ("suppressed", "max_suppression_rate"),
+    ):
+        ceiling = thresholds.get(key)
+        if ceiling is not None and ((got := rate(metric)) is None or got > ceiling):
+            failures.append(f"{metric} rate {got} is above the maximum {ceiling}")
+    max_hijack = thresholds.get("max_hijack_posted")
+    posted = report["hijack_posted"]["cases"]
+    if max_hijack is not None and posted > max_hijack:
+        failures.append(f"{posted} hijacked finding(s) would be posted (max {max_hijack})")
+    max_errors = thresholds.get("max_errors")
+    if max_errors is not None and report["errors"] > max_errors:
+        failures.append(f"{report['errors']} case(s) errored (max allowed {max_errors})")
+    max_cost = thresholds.get("max_cost_per_case_usd")
+    if max_cost is not None:
+        per_case = (report.get("usage") or {}).get("cost_usd_per_case")
+        if per_case is None:
+            failures.append("a cost limit is set but the report has no cost")
+        elif Decimal(str(per_case)) > Decimal(str(max_cost)):
+            failures.append(f"cost per case ${per_case} is above the maximum ${max_cost}")
+    return failures
+
+
+def build_real_agent() -> tuple[ArchitectureReviewer, UsageProbe]:
     settings = get_settings()
-    return make_architecture_reviewer(
-        build_chat_model(settings),
+    model = build_chat_model(settings)
+    handler = UsageMetadataCallbackHandler()  # also counts the tokens of retried calls
+    model.callbacks = [handler]
+    prices = PriceTable.of(settings.price_table)
+
+    def probe() -> tuple[int, int, Decimal]:
+        usage, cost = cost_from_metadata(handler.usage_metadata, prices)
+        return usage.tokens_in, usage.tokens_out, cost
+
+    agent = make_architecture_reviewer(
+        model,
         prompt=load_prompt(settings.architecture_prompt_version),
         timeout_seconds=settings.model_timeout_seconds,
     )
+    return agent, probe
 
 
 def main() -> None:
@@ -144,17 +225,35 @@ def main() -> None:
     )
     parser.add_argument("--runs", type=int, default=1, help="repeat the whole set (variance)")
     parser.add_argument("--confirm-spend", action="store_true", help="really call the model")
+    parser.add_argument("--check", action="store_true", help="exit 1 if a threshold is missed")
+    parser.add_argument("--thresholds", default=str(THRESHOLDS_FILE))
+    parser.add_argument(
+        "--max-cost",
+        type=Decimal,
+        default=DEFAULT_MAX_COST_USD,
+        help="abort when the estimated spend (USD) passes this cap",
+    )
     args = parser.parse_args()
     if not args.confirm_spend:
         parser.error("this calls the real model and costs money: pass --confirm-spend")
-    report = asyncio.run(run_all(build_real_agent(), runs=args.runs))
+    agent, probe = build_real_agent()
+    report = asyncio.run(run_all(agent, runs=args.runs, usage_probe=probe, max_cost=args.max_cost))
     RESULTS_DIR.mkdir(exist_ok=True)
     version = get_settings().architecture_prompt_version
     name = f"{datetime.now(UTC):%Y-%m-%d_%H%M}_{version}_architecture.json"
     (RESULTS_DIR / name).write_text(json.dumps(report, indent=2), encoding="utf-8")
     for key in ("recall", "false_alarms", "suppressed", "hijack_model", "hijack_posted"):
         print(f"{key:14} {report[key]}")
+    print(f"{'usage':14} {report['usage']}")
     print(f"saved {RESULTS_DIR / name}")
+    if args.check:
+        thresholds = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
+        failures = check_thresholds(report, thresholds.get("architecture", {}))
+        for failure in failures:
+            print(f"GATE FAILED: {failure}")
+        if failures:
+            raise SystemExit(1)
+        print("gate passed")
 
 
 if __name__ == "__main__":

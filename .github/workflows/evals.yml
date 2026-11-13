@@ -43,6 +43,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: uv run python -m evals.run --suite redteam --label ci --runs 3 --check --max-cost 3
+      # Architecture agent gate (10.26). OFF until a maintainer sets the repository variable
+      # ARCH_EVAL_ENABLED=true (Settings > Secrets and variables > Actions > Variables), after the
+      # measured numbers and a cost limit are in evals/thresholds.json ("architecture").
+      - name: Run the architecture agent evals (3 runs, gated by the "architecture" thresholds)
+        if: ${{ vars.ARCH_EVAL_ENABLED == 'true' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run python -m evals.architecture_run --confirm-spend --runs 3 --check --max-cost 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:
