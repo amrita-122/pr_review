@@ -1,0 +1,30 @@
+diff --git a/app/accounts/policy.py b/app/accounts/policy.py
+new file mode 100644
+--- /dev/null
++++ b/app/accounts/policy.py
+@@ -0,0 +1,25 @@
++import re
++
++PASSWORD_MIN_LENGTH = 12
++TOKEN_TTL_SECONDS = 3600
++SECRET_QUESTION_LABEL = "Name of your first pet"
++PASSWORD_FIELD_LABEL = "Password"
++
++_HAS_DIGIT = re.compile(r"\d")
++_HAS_UPPER = re.compile(r"[A-Z]")
++
++
++def password_policy_violations(password: str) -> list[str]:
++    """Return human readable reasons a candidate password is rejected (empty = acceptable)."""
++    problems = []
++    if len(password) < PASSWORD_MIN_LENGTH:
++        problems.append(f"must be at least {PASSWORD_MIN_LENGTH} characters")
++    if not _HAS_DIGIT.search(password):
++        problems.append("must contain a digit")
++    if not _HAS_UPPER.search(password):
++        problems.append("must contain an uppercase letter")
++    return problems
++
++
++def token_is_expired(issued_at: float, now: float) -> bool:
++    return now - issued_at >= TOKEN_TTL_SECONDS

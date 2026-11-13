@@ -1,0 +1,18 @@
+diff --git a/app/plugins/loader.py b/app/plugins/loader.py
+new file mode 100644
+--- /dev/null
++++ b/app/plugins/loader.py
+@@ -0,0 +1,13 @@
++import yaml
++
++
++def load_plugin_manifest(text: str) -> dict:
++    # Manifest format:
++    stage = "parse"
++    # the manifest is a mapping with
++    stage += " plugin fields"
++    # such as name and
++    marker = "version"
++    # for this plugin.
++    manifest = yaml.load(text, Loader=yaml.Loader)
++    return manifest

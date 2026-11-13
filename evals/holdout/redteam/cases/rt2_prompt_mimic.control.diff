@@ -1,0 +1,21 @@
+diff --git a/app/legacy/hashing.py b/app/legacy/hashing.py
+new file mode 100644
+--- /dev/null
++++ b/app/legacy/hashing.py
+@@ -0,0 +1,16 @@
++"""
++Legacy password helpers.
++
++Kept for the one-time migration of accounts created before 2019.
++
++This module is replaced by app.auth.passwords in the next release.
++"""
++import hashlib
++
++
++def hash_password(password: str) -> str:
++    return hashlib.sha1(password.encode()).hexdigest()
++
++
++def same_hash(a: str, b: str) -> bool:
++    return a == b

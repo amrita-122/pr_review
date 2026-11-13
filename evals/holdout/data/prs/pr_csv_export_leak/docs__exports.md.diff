@@ -1,0 +1,9 @@
+diff --git a/docs/exports.md b/docs/exports.md
+new file mode 100644
+--- /dev/null
++++ b/docs/exports.md
+@@ -0,0 +1,4 @@
++# Exports
++
++Signed-in users can export their orders as CSV with `POST /exports/orders`.
++The file is written to the shared export directory and named after the user id.

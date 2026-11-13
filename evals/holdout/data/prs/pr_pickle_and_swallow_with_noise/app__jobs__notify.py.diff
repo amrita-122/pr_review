@@ -1,0 +1,16 @@
+diff --git a/app/jobs/notify.py b/app/jobs/notify.py
+new file mode 100644
+--- /dev/null
++++ b/app/jobs/notify.py
+@@ -0,0 +1,11 @@
++import logging
++
++logger = logging.getLogger(__name__)
++
++
++def notify_owner(client, owner_id: int, message: str) -> None:
++    try:
++        client.send(owner_id, message)
++    except Exception:
++        pass
++    logger.info("owner %s notified", owner_id)

@@ -1,0 +1,12 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,4 +1,8 @@
+ # Changelog
++
++## 1.5.0
++
++- Order export to CSV
+ 
+ ## 1.4.0
+ 

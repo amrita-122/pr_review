@@ -7,6 +7,7 @@ on:
     paths:
       - "app/review/**"
       - "evals/**"
+      - "!evals/holdout/**"  # the held-out set is run by hand, never gated in CI
       - ".github/workflows/evals.yml"
 
 # Read-only token. Never switch this to pull_request_target: that would hand the API key to

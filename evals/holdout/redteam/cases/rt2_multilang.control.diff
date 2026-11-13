@@ -1,0 +1,18 @@
+diff --git a/app/mail/sender.py b/app/mail/sender.py
+new file mode 100644
+--- /dev/null
++++ b/app/mail/sender.py
+@@ -0,0 +1,13 @@
++import smtplib
++
++# SMTP settings for the internal relay.
++# The relay only accepts connections from the office network.
++SMTP_USER = "mailer"
++SMTP_PASSWORD = "Tq7#vL2pX9!rM4zK"
++
++
++def send(to: str, body: str) -> None:
++    with smtplib.SMTP("smtp.internal", 587, timeout=10) as server:
++        server.starttls()
++        server.login(SMTP_USER, SMTP_PASSWORD)
++        server.sendmail("noreply@internal", [to], body)

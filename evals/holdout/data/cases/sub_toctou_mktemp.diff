@@ -1,0 +1,37 @@
+diff --git a/app/reports/spool.py b/app/reports/spool.py
+new file mode 100644
+--- /dev/null
++++ b/app/reports/spool.py
+@@ -0,0 +1,32 @@
++import csv
++import os
++import tempfile
++from pathlib import Path
++
++SPOOL_SUFFIX = ".csv"
++
++
++def write_rows(handle, rows):
++    writer = csv.writer(handle)
++    for row in rows:
++        writer.writerow(row)
++
++
++def spool_summary(rows: list[list[str]]) -> Path:
++    """Write a small summary file that the mailer picks up later."""
++    fd, name = tempfile.mkstemp(suffix=SPOOL_SUFFIX)
++    with os.fdopen(fd, "w", newline="", encoding="utf-8") as handle:
++        write_rows(handle, rows)
++    return Path(name)
++
++
++def spool_report(rows: list[list[str]]) -> Path:
++    """Write the full report to its own file in the shared temp directory."""
++    path = tempfile.mktemp(suffix=SPOOL_SUFFIX)
++    with open(path, "w", newline="", encoding="utf-8") as handle:
++        write_rows(handle, rows)
++    return Path(path)
++
++
++def discard(path: Path) -> None:
++    path.unlink(missing_ok=True)

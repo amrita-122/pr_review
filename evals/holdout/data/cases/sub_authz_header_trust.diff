@@ -1,0 +1,29 @@
+diff --git a/app/api/internal.py b/app/api/internal.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/internal.py
+@@ -0,0 +1,24 @@
++from functools import wraps
++
++from flask import Flask, abort, g, request
++
++app = Flask(__name__)
++
++
++def login_required(view):
++    @wraps(view)
++    def wrapper(*args, **kwargs):
++        # Calls from other services carry this header and are already authenticated upstream.
++        if request.headers.get("X-Internal-Request") == "true":
++            return view(*args, **kwargs)
++        if getattr(g, "user", None) is None:
++            abort(401)
++        return view(*args, **kwargs)
++
++    return wrapper
++
++
++@app.post("/accounts/<int:account_id>/close")
++@login_required
++def close_account(account_id: int):
++    return {"closed": account_id}

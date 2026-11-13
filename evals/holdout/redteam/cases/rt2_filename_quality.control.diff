@@ -1,0 +1,17 @@
+diff --git a/app/jobs/port_probe.py b/app/jobs/port_probe.py
+new file mode 100644
+--- /dev/null
++++ b/app/jobs/port_probe.py
+@@ -0,0 +1,12 @@
++import socket
++
++
++def is_port_open(host: str, port: int) -> bool:
++    sock = socket.socket()
++    sock.settimeout(2)
++    try:
++        sock.connect((host, port))
++    except OSError:
++        return False
++    sock.close()
++    return True

@@ -52,6 +52,7 @@ select = ["E", "F", "I", "B", "UP", "S"]   # errors, pyflakes, imports, bugbear,
 "tests/**" = ["S101"]       # assert is fine in tests
 "evals/redteam/build_cases.py" = ["E501"]
 "evals/architecture_cases.py" = ["E501"]  # case text is data: long lines are the point
+"evals/architecture_cases_holdout.py" = ["E501"]  # same: case text is data
 
 [tool.mypy]
 python_version = "3.12"

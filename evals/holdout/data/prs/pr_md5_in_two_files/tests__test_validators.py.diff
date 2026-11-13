@@ -1,0 +1,11 @@
+diff --git a/tests/test_validators.py b/tests/test_validators.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_validators.py
+@@ -0,0 +1,6 @@
++from app.auth.validators import is_valid_email
++
++
++def test_email_needs_an_at_sign_and_a_dot():
++    assert is_valid_email("a@b.co")
++    assert not is_valid_email("not-an-email")

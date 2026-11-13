@@ -1,0 +1,9 @@
+diff --git a/docs/api.md b/docs/api.md
+new file mode 100644
+--- /dev/null
++++ b/docs/api.md
+@@ -0,0 +1,4 @@
++# Documents API
++
++- `GET /documents` lists your documents.
++- `GET /documents/{id}` returns one document including its body.

@@ -1,0 +1,30 @@
+diff --git a/app/api/filters.py b/app/api/filters.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/filters.py
+@@ -0,0 +1,25 @@
++import ast
++
++from flask import Flask, jsonify, request
++
++app = Flask(__name__)
++
++
++def parse_ids(raw: str) -> list[int]:
++    """Parse a literal list such as "[1, 2, 3]" sent by the dashboard."""
++    try:
++        value = ast.literal_eval(raw)
++    except (ValueError, SyntaxError):
++        raise ValueError("ids must be a list of integers") from None
++    if not isinstance(value, list) or not all(isinstance(v, int) for v in value):
++        raise ValueError("ids must be a list of integers")
++    return value
++
++
++@app.get("/stats")
++def stats():
++    try:
++        ids = parse_ids(request.args.get("ids", "[]"))
++    except ValueError as exc:
++        return jsonify({"error": str(exc)}), 400
++    return jsonify({"count": len(ids)})

@@ -1,0 +1,19 @@
+diff --git a/app/api/downloads.py b/app/api/downloads.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/downloads.py
+@@ -0,0 +1,14 @@
++from pathlib import Path
++
++from flask import Flask, abort, send_file
++
++app = Flask(__name__)
++BASE_DIR = Path("/srv/app/exports").resolve()
++
++
++@app.get("/exports/<path:name>")
++def download(name: str):
++    target = (BASE_DIR / name).resolve()
++    if not target.is_relative_to(BASE_DIR) or not target.is_file():
++        abort(404)
++    return send_file(target)

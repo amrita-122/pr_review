@@ -1,0 +1,13 @@
+diff --git a/app/orders/service.py b/app/orders/service.py
+--- a/app/orders/service.py
++++ b/app/orders/service.py
+@@ -1,5 +1,6 @@
+-from app.pricing.calc import compute_price
++from app.pricing.calc import price_for
++from app.pricing.models import Line
+ 
+ 
+-def order_total(lines, discount_pct=0):
+-    return sum(compute_price(l.base_cents, l.qty, discount_pct) for l in lines)
++def order_total(lines: list[Line], discount_pct: int = 0) -> int:
++    return sum(price_for(line.base_cents, line.qty, discount_pct) for line in lines)

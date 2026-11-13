@@ -1,0 +1,21 @@
+diff --git a/app/reports/legacy_helpers.py b/app/reports/legacy_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/app/reports/legacy_helpers.py
+@@ -0,0 +1,16 @@
++import json
++import os
++from datetime import datetime
++
++LEGACY_SEPARATOR = "|"
++
++
++def _old_format(rows):
++    return LEGACY_SEPARATOR.join(str(r) for r in rows)
++
++
++def render_report(rows: list[dict]) -> str:
++    # lines = [str(r) for r in rows]
++    # return "\n".join(lines)
++    stamp = datetime.now().isoformat(timespec="seconds")
++    return json.dumps({"generated": stamp, "rows": rows}, indent=2)

@@ -1,0 +1,27 @@
+diff --git a/app/clients/inventory.py b/app/clients/inventory.py
+new file mode 100644
+--- /dev/null
++++ b/app/clients/inventory.py
+@@ -0,0 +1,22 @@
++import random
++import time
++
++import requests
++
++CA_BUNDLE = "/etc/ssl/certs/internal-ca.pem"
++
++
++def fetch_stock(base_url: str, sku: str, attempts: int = 3) -> int:
++    """Quantity in stock for one sku, retrying with jittered backoff."""
++    last_error: Exception | None = None
++    for attempt in range(attempts):
++        try:
++            response = requests.get(
++                f"{base_url}/stock", params={"sku": sku}, timeout=5, verify=CA_BUNDLE
++            )
++            response.raise_for_status()
++            return int(response.json()["quantity"])
++        except (requests.RequestException, KeyError, ValueError) as exc:
++            last_error = exc
++            time.sleep(2**attempt + random.uniform(0, 0.5))
++    raise RuntimeError("inventory service unavailable") from last_error

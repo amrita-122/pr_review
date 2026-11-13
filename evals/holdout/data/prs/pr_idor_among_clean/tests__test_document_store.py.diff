@@ -1,0 +1,13 @@
+diff --git a/tests/test_document_store.py b/tests/test_document_store.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_document_store.py
+@@ -0,0 +1,8 @@
++from app.documents.store import Document, DocumentStore
++
++
++def test_for_owner_only_returns_that_owners_documents():
++    store = DocumentStore()
++    store.add(Document(id=1, owner_id=10, title="a"))
++    store.add(Document(id=2, owner_id=11, title="b"))
++    assert [d.id for d in store.for_owner(10)] == [1]

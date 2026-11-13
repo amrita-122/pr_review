@@ -1,0 +1,26 @@
+diff --git a/app/search/products_search.py b/app/search/products_search.py
+new file mode 100644
+--- /dev/null
++++ b/app/search/products_search.py
+@@ -0,0 +1,21 @@
++import sqlite3
++from contextlib import closing
++
++
++def _clean(value: str) -> str:
++    """Strip the characters that are used to chain statements or start comments."""
++    return value.replace(";", "").replace("--", "").replace("/*", "")
++
++
++def get_product(product_id: int) -> tuple | None:
++    with closing(sqlite3.connect("shop.db")) as conn:
++        return conn.execute(
++            "SELECT id, name FROM products WHERE id = ?", (product_id,)
++        ).fetchone()
++
++
++def search_products(term: str, limit: int = 20) -> list[tuple]:
++    cleaned = _clean(term)
++    sql = f"SELECT id, name FROM products WHERE name LIKE '%{cleaned}%' LIMIT ?"
++    with closing(sqlite3.connect("shop.db")) as conn:
++        return conn.execute(sql, (limit,)).fetchall()

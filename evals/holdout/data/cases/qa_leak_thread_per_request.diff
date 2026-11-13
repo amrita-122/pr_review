@@ -1,0 +1,25 @@
+diff --git a/app/api/jobs_start.py b/app/api/jobs_start.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/jobs_start.py
+@@ -0,0 +1,20 @@
++import threading
++import time
++
++from flask import Flask, jsonify
++
++from app.jobs.status import refresh_status
++
++app = Flask(__name__)
++
++
++def _poll(job_id: int) -> None:
++    while True:
++        time.sleep(5)
++        refresh_status(job_id)
++
++
++@app.post("/jobs/<int:job_id>/watch")
++def watch(job_id: int):
++    threading.Thread(target=_poll, args=(job_id,)).start()
++    return jsonify({"watching": job_id}), 202

@@ -1,0 +1,16 @@
+diff --git a/app/pricing/models.py b/app/pricing/models.py
+--- a/app/pricing/models.py
++++ b/app/pricing/models.py
+@@ -1,5 +1,8 @@
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True)
+ class Line:
+-    def __init__(self, sku, base_cents, qty):
+-        self.sku = sku
+-        self.base_cents = base_cents
+-        self.qty = qty
++    sku: str
++    base_cents: int
++    qty: int

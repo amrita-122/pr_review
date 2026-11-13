@@ -1,0 +1,14 @@
+diff --git a/app/config_flags.py b/app/config_flags.py
+new file mode 100644
+--- /dev/null
++++ b/app/config_flags.py
+@@ -0,0 +1,9 @@
++FLAGS = {
++    "password_reset_enabled": True,
++    "secret_santa_mode": False,
++    "token_login_enabled": True,
++}
++
++
++def flag(name: str) -> bool:
++    return FLAGS.get(name, False)

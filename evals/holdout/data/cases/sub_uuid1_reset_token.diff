@@ -1,0 +1,29 @@
+diff --git a/app/auth/reset_tokens.py b/app/auth/reset_tokens.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/reset_tokens.py
+@@ -0,0 +1,24 @@
++import hashlib
++import secrets
++import uuid
++
++TOKEN_TTL_SECONDS = 900
++
++
++def new_session_id() -> str:
++    return secrets.token_urlsafe(32)
++
++
++def _digest(token: str) -> str:
++    return hashlib.sha256(token.encode()).hexdigest()
++
++
++def issue_reset_token(email: str, store) -> str:
++    """Create a one-time password reset token and remember who it belongs to."""
++    token = str(uuid.uuid1())
++    store.put(_digest(token), email, ttl=TOKEN_TTL_SECONDS)
++    return token
++
++
++def redeem_reset_token(token: str, store) -> str | None:
++    return store.pop(_digest(token))

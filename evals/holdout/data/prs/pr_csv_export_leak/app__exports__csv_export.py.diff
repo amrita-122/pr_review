@@ -1,0 +1,18 @@
+diff --git a/app/exports/csv_export.py b/app/exports/csv_export.py
+new file mode 100644
+--- /dev/null
++++ b/app/exports/csv_export.py
+@@ -0,0 +1,13 @@
++import csv
++from pathlib import Path
++
++
++def export_orders(rows: list[dict], destination: Path) -> int:
++    """Write rows to destination as CSV and return how many were written."""
++    if not rows:
++        return 0
++    handle = open(destination, "w", newline="", encoding="utf-8")
++    writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
++    writer.writeheader()
++    writer.writerows(rows)
++    return len(rows)

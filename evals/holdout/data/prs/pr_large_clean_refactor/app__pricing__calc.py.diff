@@ -1,0 +1,9 @@
+diff --git a/app/pricing/calc.py b/app/pricing/calc.py
+--- a/app/pricing/calc.py
++++ b/app/pricing/calc.py
+@@ -1,3 +1,4 @@
+-def compute_price(base_cents: int, qty: int, discount_pct: int = 0) -> int:
++def price_for(base_cents: int, qty: int, discount_pct: int = 0) -> int:
++    """Total in cents for qty units after a whole-number percent discount."""
+     gross = base_cents * qty
+     return gross - gross * discount_pct // 100

@@ -1,0 +1,12 @@
+diff --git a/app/orders/summary.py b/app/orders/summary.py
+--- a/app/orders/summary.py
++++ b/app/orders/summary.py
+@@ -1,2 +1,6 @@
+-def summarize(lines):
+-    return {l.sku: l.qty for l in lines}
++from app.pricing.models import Line
++
++
++def summarize(lines: list[Line]) -> dict[str, int]:
++    """Map each sku to the quantity ordered."""
++    return {line.sku: line.qty for line in lines}

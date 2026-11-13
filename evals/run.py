@@ -25,8 +25,9 @@ from app.review.graph import ReviewLimits, review_diff
 from app.review.llm import Reviewer, build_review_setup
 from app.review.schemas import agent_for_category
 from app.review.triage import Triager
-from evals.dataset import Case, PRCase, load_cases, load_pr_cases
+from evals.dataset import DATA_DIR, Case, PRCase, load_cases, load_pr_cases
 from evals.metrics import CaseResult, match_case, score_run, summarize
+from evals.redteam import REDTEAM_DIR
 
 RESULTS_DIR = Path(__file__).parent / "results"
 THRESHOLDS_FILE = Path(__file__).parent / "thresholds.json"
@@ -223,7 +224,10 @@ async def amain(args: argparse.Namespace) -> int:
 
         return await amain_redteam(args, settings)
     prompt_version = args.prompt_version or settings.prompt_version
-    cases: list[Case | PRCase] = list(load_pr_cases() if args.suite == "pr" else load_cases())
+    data_dir = Path(args.data_dir)
+    cases: list[Case | PRCase] = list(
+        load_pr_cases(data_dir) if args.suite == "pr" else load_cases(data_dir)
+    )
     if args.suite == "pr" and not cases:
         print("no multi-file cases in evals/data/prs/ yet", file=sys.stderr)
         return 2
@@ -265,6 +269,7 @@ async def amain(args: argparse.Namespace) -> int:
         json.dumps(
             {
                 "suite": args.suite,
+                "data_dir": str(data_dir),  # which dataset: golden (evals/data) or holdout
                 "agents": agents,
                 "triage": triage,
                 "prompt_version": prompt_version,
@@ -321,6 +326,16 @@ def main() -> None:
         type=float,
         default=float(DEFAULT_MAX_COST_USD),
         help="abort above this estimated USD",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default=str(DATA_DIR),
+        help="golden/pr suites: dataset folder (default evals/data; held-out: evals/holdout/data)",
+    )
+    parser.add_argument(
+        "--redteam-dir",
+        default=str(REDTEAM_DIR),
+        help="redteam suite: folder (default evals/redteam; held-out set: evals/holdout/redteam)",
     )
     parser.add_argument("--check", action="store_true", help="exit 1 if a threshold is missed")
     parser.add_argument("--thresholds", default=str(THRESHOLDS_FILE))

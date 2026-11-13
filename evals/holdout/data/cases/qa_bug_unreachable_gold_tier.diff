@@ -1,0 +1,15 @@
+diff --git a/app/loyalty/tiers.py b/app/loyalty/tiers.py
+new file mode 100644
+--- /dev/null
++++ b/app/loyalty/tiers.py
+@@ -0,0 +1,10 @@
++def points_to_next(points: int, threshold: int) -> int:
++    return max(threshold - points, 0)
++
++
++def tier_for(points: int) -> str:
++    if points >= 500:
++        return "silver"
++    elif points >= 2000:
++        return "gold"
++    return "bronze"

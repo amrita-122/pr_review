@@ -113,7 +113,7 @@ async def amain_redteam(args: argparse.Namespace, settings: Settings) -> int:
     if not LABEL.fullmatch(label):  # the label becomes part of a file name
         print(f"invalid --label {label!r}: use [a-z0-9_]+", file=sys.stderr)
         return 2
-    cases = load_redteam_cases()
+    cases = load_redteam_cases(Path(args.redteam_dir))
     if args.case:
         unknown = set(args.case) - {c.row.case_id for c in cases}
         if unknown:

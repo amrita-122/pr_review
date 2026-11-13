@@ -1,0 +1,18 @@
+diff --git a/app/jobs/ingest_feed.py b/app/jobs/ingest_feed.py
+new file mode 100644
+--- /dev/null
++++ b/app/jobs/ingest_feed.py
+@@ -0,0 +1,13 @@
++import json
++
++
++def read_feed(path: str) -> list[dict]:
++    """Load every record from a newline-delimited JSON feed."""
++    # The feed is produced by the nightly export job.
++    handle = open(path, encoding="utf-8")
++    records = [json.loads(line) for line in handle if line.strip()]
++    return records
++
++
++def count_records(records: list[dict]) -> int:
++    return len(records)

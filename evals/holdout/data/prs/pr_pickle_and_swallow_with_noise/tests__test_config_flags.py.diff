@@ -1,0 +1,10 @@
+diff --git a/tests/test_config_flags.py b/tests/test_config_flags.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_config_flags.py
+@@ -0,0 +1,5 @@
++from app.config_flags import flag
++
++
++def test_unknown_flag_is_off():
++    assert flag("DOES_NOT_EXIST") is False

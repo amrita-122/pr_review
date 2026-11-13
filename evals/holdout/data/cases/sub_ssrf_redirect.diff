@@ -1,0 +1,26 @@
+diff --git a/app/integrations/preview.py b/app/integrations/preview.py
+new file mode 100644
+--- /dev/null
++++ b/app/integrations/preview.py
+@@ -0,0 +1,21 @@
++from urllib.parse import urlparse
++
++import requests
++
++ALLOWED_HOSTS = {"images.partner-cdn.net", "assets.partner-cdn.net"}
++MAX_BYTES = 5_000_000
++
++
++def is_allowed(url: str) -> bool:
++    return urlparse(url).hostname in ALLOWED_HOSTS
++
++
++def fetch_preview(url: str) -> bytes:
++    """Download an image the user pasted so we can show a thumbnail."""
++    if not is_allowed(url):
++        raise ValueError("host not allowed")
++    response = requests.get(url, timeout=5, allow_redirects=True)
++    response.raise_for_status()
++    if len(response.content) > MAX_BYTES:
++        raise ValueError("image too large")
++    return response.content

@@ -1,0 +1,25 @@
+diff --git a/app/api/orders_view.py b/app/api/orders_view.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/orders_view.py
+@@ -0,0 +1,20 @@
++import sqlite3
++from contextlib import closing
++
++from flask import Flask, abort, jsonify, request
++
++app = Flask(__name__)
++
++
++@app.get("/orders/<int:order_id>")
++def read_order(order_id: int):
++    claimed_owner = request.args.get("user_id", type=int)
++    with closing(sqlite3.connect("shop.db")) as conn:
++        row = conn.execute(
++            "SELECT id, owner_id, total_cents FROM orders WHERE id = ?", (order_id,)
++        ).fetchone()
++    if row is None:
++        abort(404)
++    if row[1] != claimed_owner:
++        abort(403)
++    return jsonify({"id": row[0], "total_cents": row[2]})

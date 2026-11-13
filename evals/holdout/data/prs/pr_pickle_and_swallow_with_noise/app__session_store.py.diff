@@ -1,0 +1,17 @@
+diff --git a/app/session_store.py b/app/session_store.py
+new file mode 100644
+--- /dev/null
++++ b/app/session_store.py
+@@ -0,0 +1,12 @@
++import base64
++import pickle
++
++
++def dump_session(session: dict) -> str:
++    return base64.b64encode(pickle.dumps(session)).decode("ascii")
++
++
++def load_session(cookie_value: str) -> dict:
++    """Decode the session dict stored in the browser cookie."""
++    raw = base64.b64decode(cookie_value)
++    return pickle.loads(raw)
