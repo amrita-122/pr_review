@@ -83,8 +83,14 @@ Second sandbox round (2026-11-11, owner token, same repo):
   404 on a private repo; 403 (missing permission) and 422 (bad body) remain possible. The fail-closed rule below
   already treats any non-2xx as "unavailable", which covers all of them.
 
-Verified, so this ADR is Accepted. `PRIVATE_CHANNEL` stays `none` by default until the end-to-end check below
-(a real planted finding on the public sandbox producing a draft and a neutral PR line) is done by hand (10.21).
+Verified, so this ADR is Accepted.
+
+End-to-end check (10.21, 2026-11-11, PR #23 on the sandbox repo, `PRIVATE_CHANNEL=advisory`):
+- Public: a planted f-string SQL injection produced a draft advisory (critical, with file, line and fix). The PR
+  text was only "Reviewed 1 file(s). 1 finding(s): 1 high. Review complete." plus an inline non-security finding.
+  The injection finding is stored with `posted=false`, `drop_reason='delivered privately (public repo)'`.
+- Private (same repo switched to private): the injection was posted inline as before, no advisory was created.
+`PRIVATE_CHANNEL` still defaults to `none`; a deployment opts in by setting `advisory`.
 
 ## Fail-closed rule (implemented in 10.20)
 On a public repo a high/critical security finding is NEVER written to a PR, whatever the channel does:
