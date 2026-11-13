@@ -24,7 +24,7 @@ data "aws_iam_policy_document" "deploy_trust" {
       variable = "token.actions.githubusercontent.com:sub"
       # This repo uses GitHub's immutable subject claim (owner and repo ids in the prefix), so the plain
       # "repo:owner/name" form never matches. Prefix: gh api repos/<owner>/<repo>/actions/oidc/customization/sub
-      values   = ["repo:amrita-122@139905627/pr_review@1399289632:environment:production"]
+      values = ["repo:amrita-122@139905627/pr_review@1399289632:environment:production"]
     }
   }
 }
