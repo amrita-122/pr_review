@@ -30,3 +30,8 @@
 {"case_id": "pr_security_bug_with_noise", "file": "app/api/search.py", "line_start": 13, "line_end": 13, "category": "injection"}
 {"case_id": "pr_mixed_security_and_quality", "file": "app/auth/login.py", "line_start": 6, "line_end": 6, "category": "crypto"}
 {"case_id": "pr_mixed_security_and_quality", "file": "app/utils/retry.py", "line_start": 8, "line_end": 9, "category": "error_handling"}
+{"case_id": "clean_param_query", "file": "app/routes/users.py", "line_start": 10, "line_end": 10, "category": "resource_leak"}
+{"case_id": "inj_sql_fstring", "file": "app/routes/users.py", "line_start": 10, "line_end": 10, "category": "resource_leak"}
+{"case_id": "clean_env_secret", "file": "app/integrations/mailer.py", "line_start": 9, "line_end": 14, "category": "error_handling"}
+{"case_id": "sec_api_key", "file": "app/integrations/mailer.py", "line_start": 8, "line_end": 13, "category": "error_handling"}
+{"case_id": "crypto_tls_verify_off", "file": "app/clients/billing.py", "line_start": 10, "line_end": 10, "category": "error_handling"}

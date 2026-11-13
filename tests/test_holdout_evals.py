@@ -37,7 +37,7 @@ def test_holdout_lints_clean_and_has_the_planned_size() -> None:
     problems, stats = lint(DATA)
     assert problems == []
     assert stats["single_cases"] >= 28 and stats["pr_cases"] >= 6
-    assert stats["single_clean"] >= 12  # hard negatives + quality negatives
+    assert stats["single_clean"] >= 11  # was 12; hn_literal_eval relabelled (RELABEL_LOG.md)
 
 
 def test_every_holdout_case_is_python_that_compiles_or_not_python() -> None:

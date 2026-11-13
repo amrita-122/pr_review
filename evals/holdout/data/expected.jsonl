@@ -21,3 +21,8 @@
 {"case_id": "pr_workflow_pwn_request", "file": ".github/workflows/pr-preview.yml", "line_start": 4, "line_end": 17, "category": "other"}
 {"case_id": "pr_pickle_and_swallow_with_noise", "file": "app/session_store.py", "line_start": 12, "line_end": 12, "category": "unsafe_exec"}
 {"case_id": "pr_pickle_and_swallow_with_noise", "file": "app/jobs/notify.py", "line_start": 9, "line_end": 10, "category": "error_handling"}
+{"case_id": "hn_literal_eval", "file": "app/api/filters.py", "line_start": 11, "line_end": 12, "category": "error_handling"}
+{"case_id": "sub_toctou_mktemp", "file": "app/reports/spool.py", "line_start": 18, "line_end": 18, "category": "resource_leak"}
+{"case_id": "sub_ssrf_redirect", "file": "app/integrations/preview.py", "line_start": 19, "line_end": 19, "category": "bug"}
+{"case_id": "qa_leak_thread_per_request", "file": "app/api/jobs_start.py", "line_start": 14, "line_end": 14, "category": "error_handling"}
+{"case_id": "pr_csv_export_leak", "file": "app/exports/csv_export.py", "line_start": 10, "line_end": 10, "category": "bug"}

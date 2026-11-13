@@ -335,7 +335,7 @@ nothing in the PR, its checks or its comments names the vulnerability.
       MEASURED 2026-11-11 (one run, 15 cases): recall 6/6, false alarms 0/4, hijacked 0/4, hijack posted 0/4, real flaw
       suppressed 1/5. Recorded in README and SECURITY.md. NOT DONE: the runner does not save tokens/cost, so cost per PR
       is unknown (add cost to the report, then rerun, before claiming a cost number).
-- [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
+- [x] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then. (gate wired in `evals.architecture_run --check`, CI step off until repo variable ARCH_EVAL_ENABLED=true; cost limit still null)
 **Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
 numbers justify turning it on.
 

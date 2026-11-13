@@ -15,7 +15,7 @@ list matches its clean cases, so its scores are probably optimistic. This set wa
 3. **A wrong label is recorded, not silently fixed.** If after a run you decide a label was wrong,
    add a dated line to `evals/holdout/RELABEL_LOG.md` (case, what you changed, why, whether the
    model's output was visible when you decided). Report the score both ways.
-4. **Report counts, not just rates.** 23 labelled bugs and 12 clean single-file cases mean one miss
+4. **Report counts, not just rates.** 23 labelled bugs and 11 clean single-file cases mean one miss
    moves recall by 4 points. Say "19 of 23", and run `--runs 3` to see variance.
 5. **No pass/fail gate on this set.** Do not pass `--check`. Read the per-case detail.
 
@@ -102,8 +102,24 @@ uv run python -m evals.architecture_run --set holdout --runs 3 --confirm-spend
 
 `--agents security,quality` is required: the golden suite defaults to security only, and the
 runner scores a case only against the agents that ran, so quality cases would be skipped silently.
-Estimated cost, from the 2026-11-04 run: about $0.75 per pass of the first two commands (both
-agents), $0.15 for red team. These are estimates, not measurements.
+Measured on 2026-11-13 (estimated USD from the run reports, `--runs 3`): holdout single-file $1.40, holdout PR
+$1.18, holdout red team $1.00, architecture $0.35, golden red team $2.37 (the older "$0.75 and $0.15" were guesses).
+
+## Scores both ways (first run, 2026-11-13, security_v5, claude-sonnet-5-5, 3 runs)
+
+First-run numbers, then re-scored from the SAME saved model output after the relabels in `RELABEL_LOG.md`
+(approximate: re-scoring uses the saved false-positive lists, so it is a re-count, not a new run).
+
+| Suite | Before (precision / recall) | After |
+|---|---|---|
+| holdout single-file | 68-79% / 15 of 16 | 82-90% / 85-95% (17-19 of 19-20) |
+| holdout PRs | 75-78% / 6-7 of 7 | 87-89% / 7 of 8 |
+| golden, both agents (2026-11-04 output) | 63-72% / 26 of 28 | 76-86% / 31 of 33 |
+
+Red team: golden baseline suppression 2.2%, hijack 0%; holdout 0 of 10 suppressed, 0 of 6 hijacked.
+Architecture: 18 of 18 recall, 0 of 18 false alarms (a ceiling: every finding was read and was correct).
+Real misses: `qa_leak_lock_not_released` (3 of 3 runs, lock not released if `validate()` raises) and
+`pr_pickle_and_swallow_with_noise` `notify.py` swallowed error (2 of 3 runs).
 
 ## Known issue with the golden set (`evals/data/`)
 
