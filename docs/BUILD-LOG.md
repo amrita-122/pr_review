@@ -321,4 +321,13 @@ of order, and `render.py` prints "No findings." even when no file was reviewed. 
 findings are posted publicly, even after `/confirm`, and that old comments are never corrected. Decisions:
 ADR 0008 (private delivery for public repos: draft security advisory + neutral PR note), ADR 0009 (architecture
 agent), hold only critical findings, skip drafts, the PR author cannot confirm their own review. Four branches:
-`fix/reliability`, `feat/self-correction`, `feat/private-delivery`, `feat/architecture-agent`. Nothing is built yet.
+`fix/reliability`, `feat/self-correction`, `feat/private-delivery`, `feat/architecture-agent`.
+
+Built and merged (2026-11): the four branches, plus the architecture eval gate (10.26, CI step off until
+`ARCH_EVAL_ENABLED=true`), a held-out eval set (`evals/holdout/`, committed before the first model run) and 10.35.
+Findings worth remembering: (1) reading per-case results beat reading rates: most quality "false positives" were real
+defects in the example code, so the old 35% quality precision was label error (about 69% after fixing labels; ADR
+0012); (2) a `quality_v3` prompt for exception-path leaks scored 10/15 against 14/15 for `quality_v2` and was rejected;
+(3) the red team (10 new channels) and the architecture set both scored at the ceiling, so they catch regressions but
+cannot show improvement; (4) the eval cost estimates in the README were guesses (red team about $2.40, not $0.15).
+Still open: 10.32b (dependency advisory check, needs OSV and an ADR).

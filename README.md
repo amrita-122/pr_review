@@ -157,7 +157,7 @@ findings are not repeated on later pushes, and "Fixed in <sha>" replies resolve 
 false positives; on public repos high/critical security findings never appear on the PR (they go to a private
 channel, fail closed); an optional architecture agent reads related repo files.
 
-Numbers: the Phase 10 changes add about 200 unit tests (370 -> 570) (no real model calls). The new migrations
+Numbers: the Phase 10 changes add about 340 unit tests (370 -> 713) (no real model calls). The new migrations
 (up to `a9e37c2d5b61`) were applied on a real Postgres database.
 
 Architecture agent, measured once on 2026-11-11 (prompt `architecture_v1`, 15 cases, 0 errors; file
@@ -174,7 +174,32 @@ Architecture agent, measured once on 2026-11-11 (prompt `architecture_v1`, 15 ca
 Read these with care: it is ONE run on a small set (6 + 4 + 5 cases), so one case moves a rate by 17-25 points.
 The suppressed case is a real flaw dropped by the output policy (`mention`) on an injection case: the safe failure
 (nothing harmful posted) but a missed finding. Cost per PR was not recorded by this runner (it is a TODO in
-TASKS.md), so no cost number is claimed. The agent stays off by default and is not in the eval gate (10.26).
+TASKS.md), so no cost number is claimed. The agent stays off by default. Its eval gate is wired (`--check`, thresholds in `evals/thresholds.json`) but the CI step
+stays off until the repository variable `ARCH_EVAL_ENABLED=true` (10.26).
+
+### Held-out evals and what they found (2026-11-13)
+
+A second eval set that no prompt was tuned on (`evals/holdout/`, rules in its README): 28 single-file cases, 6 whole
+PRs, 10 red-team pairs, 15 architecture cases, committed before any model ran. `security_v5`, `claude-sonnet-5-5`,
+3 runs each, estimated spend about $6 in total.
+
+| Measure | Result |
+|---|---|
+| Security agent, single-file + PR (last of 3 runs) | 12 of 12 labelled security bugs found, 0 false positives |
+| Quality agent, first run -> after relabelling | precision 68-79% -> 82-90%; recall 15 of 16 -> 85-95% |
+| Red team, 10 new channels (removed line, forged JSON, base64, non-English, `replacement_code`, ...) | 0 of 10 suppressed, 0 of 6 hijacked, all 3 runs |
+| Red team, original set re-run with `replacement_code` counted | suppression 2.2%, hijack 0% |
+| Architecture agent | 18 of 18 recall, 0 of 18 false alarms (every finding read: correct) |
+
+What the held-out run taught more than the scores did. Reading the per-case findings showed most quality
+"false positives" were real defects in my own example code (unclosed connections, ignored HTTP status, `literal_eval`
+raising `TypeError`). I fixed the labels, kept a dated log (`evals/holdout/RELABEL_LOG.md`) and report both scores, so
+the old "quality precision 35%" was mostly label error: it is about 69% on the corrected golden set (recall 90%).
+A prompt tweak aimed at exception-path leaks scored worse than the current prompt (10 of 15 against 14 of 15) and was
+not adopted (ADR 0012). Limits: 23 labelled bugs means one miss moves recall about 4 points; the set was written knowing
+the v5 prompts, and I read its findings, so it is no longer unbiased for quality exception-path cases; the architecture
+set is a ceiling (it cannot show improvement). Real remaining misses: a lock not released when `validate()` raises
+(3 of 3 runs) and a swallowed `except Exception: pass` (2 of 3).
 
 Private delivery, checked on a real public sandbox repo (2026-11-11, dummy content; ADR 0008 is Accepted): the App's
 installation token creates a draft security advisory (HTTP 201); the public sees nothing (404, empty list); a
