@@ -423,11 +423,18 @@ cost control
       `default_value` with `dimensions`, and a dimension must be a selector): now one metric per service. Alarms, dashboard and an error-log metric filter are in; the email subscription is
       empty by default, subscribe with the CLI command in infra/README.md. `ALERT_WEBHOOK_URL` is not wired yet.) Observability: alarms (ALB 5xx, unhealthy targets, task count, RDS CPU/storage/connections), SNS email,
       dashboard; wire `ALERT_WEBHOOK_URL` for failed jobs.
-- [ ] 11.9 (WRITTEN, never run (the migration was run by hand with `aws ecs run-task` because `jq` is not installed, so
-      `deploy.sh` is untested): `.github/workflows/deploy.yml`, `infra-ci.yml`, `infra/scripts/deploy.sh`. Checked: bash and YAML
+- [x] 11.9 (DONE 2026-11-13: the first real run (merge commit aa6981f, approved on the `production` environment) built the
+      image, passed the Trivy scan, pushed `pr-review-agent:aa6981f60425`, ran the migration as a one-off task and rolled web
+      and worker to task definition revision 3 (rollout COMPLETED, `/health` ok), with NO AWS keys stored in GitHub. It
+      took three tries, each a real catch: (1) the role trusted `repo:owner/name`, but this repo uses GitHub's IMMUTABLE
+      subject claim (`repo:owner@ownerid/name@repoid:environment:production`, see
+      `gh api repos/<o>/<r>/actions/oidc/customization/sub`), so the OIDC login was refused; (2) Trivy blocked the first
+      image on two fixable findings (certifi CRITICAL, dnspython HIGH), fixed by upgrading both in `uv.lock`; (3) main's CI
+      had been red since 2026-11-11 (a stale Postgres-only test), and the deploy only starts after a green CI.)
+      `.github/workflows/deploy.yml`, `infra-ci.yml`, `infra/scripts/deploy.sh`. Checked: bash and YAML
       syntax, `terraform fmt/validate`, checkov 211 passed / 0 failed with documented skips. Deviation from the ADR:
-      `terraform plan/apply` run by hand, not in CI, because a CI apply role would be near-admin. Needs the repo variable
-      `AWS_DEPLOY_ROLE_ARN` and a `production` environment with a required reviewer, and the changes committed and pushed.) Pipeline: GitHub Actions deploy workflow using OIDC (no stored AWS keys): build, Trivy scan, push, migration
+      `terraform plan/apply` run by hand, not in CI, because a CI apply role would be near-admin. Set up:
+      repo variable `AWS_DEPLOY_ROLE_ARN` and a `production` environment (required reviewer, `main` only).) Pipeline: GitHub Actions deploy workflow using OIDC (no stored AWS keys): build, Trivy scan, push, migration
       as a one-off ECS task, service update, wait for stable. `terraform plan` on PRs, `apply` on merge behind a protected
       environment, `checkov` on the Terraform.
 - [x] 11.10 (DONE 2026-11-13: webhook URL is https://review.triumphinfrastructure.com/webhooks/github (the domain stays at
