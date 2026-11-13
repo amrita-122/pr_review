@@ -54,7 +54,7 @@ jobs:
 
       # Fail the deploy on known, fixable CRITICAL/HIGH vulnerabilities in the image.
       - name: Scan the image (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: scan-candidate:latest
           severity: CRITICAL,HIGH
