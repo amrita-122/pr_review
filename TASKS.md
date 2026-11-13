@@ -371,7 +371,7 @@ numbers justify turning it on.
       (also stores `findings.rationale` for /explain). NOT done: a per-PR cap (size caps already bound it),
       the dashboard (new UI surface). OPEN: architecture-agent token usage may be missing from `cost_usd`
       (not verified), so the day budget could undercount.
-- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents. NOT STARTED: needs real model runs
+- [x] 10.35 Raise quality-agent precision before adding any more agents. DONE (measured, no prompt change, ADR 0012): the "35%" was label error; relabelled golden set gives precision 69% (61-80%), recall 90% (3 runs, $0.99). A quality_v3 prompt for exception-path leaks scored 10/15 vs quality_v2 14/15 on 6 new cases and was rejected. Old notes: needs real model runs
       (cost) and prompt iteration with measurement. Ideas: a severity floor for quality findings, few-shot false-positive
       examples from the dismissed findings, a second validation pass. Also bump the prompts to ask for
       `replacement_code` / ranges only after that measurement (10.27, 10.33 are inert until then).

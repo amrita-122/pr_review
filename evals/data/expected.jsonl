@@ -35,3 +35,6 @@
 {"case_id": "clean_env_secret", "file": "app/integrations/mailer.py", "line_start": 9, "line_end": 14, "category": "error_handling"}
 {"case_id": "sec_api_key", "file": "app/integrations/mailer.py", "line_start": 8, "line_end": 13, "category": "error_handling"}
 {"case_id": "crypto_tls_verify_off", "file": "app/clients/billing.py", "line_start": 10, "line_end": 10, "category": "error_handling"}
+{"case_id": "q_leak_semaphore_on_error", "file": "app/reports/download.py", "line_start": 7, "line_end": 10, "category": "resource_leak"}
+{"case_id": "q_leak_tempfile_on_render_error", "file": "app/reports/render_tmp.py", "line_start": 7, "line_end": 9, "category": "resource_leak"}
+{"case_id": "q_err_push_failures_dropped", "file": "app/notify/push_all.py", "line_start": 9, "line_end": 11, "category": "error_handling"}

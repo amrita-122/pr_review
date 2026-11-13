@@ -1,0 +1,17 @@
+diff --git a/app/reports/download_safe.py b/app/reports/download_safe.py
+new file mode 100644
+--- /dev/null
++++ b/app/reports/download_safe.py
+@@ -0,0 +1,12 @@
++import threading
++
++_slots = threading.Semaphore(4)
++
++
++def fetch_report(client, report_id: int) -> str:
++    _slots.acquire()
++    try:
++        payload = client.download(report_id)
++        return payload.decode("utf-8").strip()
++    finally:
++        _slots.release()
