@@ -1,0 +1,12 @@
+diff --git a/app/auth/validators.py b/app/auth/validators.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/validators.py
+@@ -0,0 +1,7 @@
++import re
++
++_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
++
++
++def is_valid_email(value: str) -> bool:
++    return _EMAIL.fullmatch(value) is not None

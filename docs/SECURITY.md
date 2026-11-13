@@ -215,10 +215,12 @@ refused users cost no lookups; the output policy now also rejects bare domains, 
 `org/repo#45` and `GH-9`; on PUBLIC repos high/critical security findings never become PR text (fail closed).
 
 What is still open, in rough order of importance:
-1. **The private channel is unproven.** `PRIVATE_CHANNEL` defaults to `none`, so on public repos those findings
-   currently live only in the database. ADR 0008 lists what must be tried on a real public repo (installation token
-   allowed? draft invisible to read-only users? disabled advisories?). Until then maintainers must read the
-   `findings` table (`drop_reason = 'private delivery failed'`).
+1. **The private channel works but is opt-in.** Verified end to end on a public and a private sandbox repo
+   (2026-11-11, 10.21; ADR 0008): the installation token creates a draft advisory, the PR shows only a neutral
+   line, and private repos are unaffected. `PRIVATE_CHANNEL` still defaults to `none`, so unless a deployment sets
+   `advisory`, those findings live only in the database (maintainers read the `findings` table,
+   `drop_reason = 'private delivery failed'`). Still unobserved: a true read-only collaborator (needs an
+   organization; inferred invisible). Drafts cannot be deleted through the API, only closed.
 2. **A neutral line is still a signal.** Public PRs end with "Review complete." whether or not something was found,
    so the text carries no information, but timing, the absence of inline comments and an advisory notification
    to maintainers can still hint at it. Accepted.

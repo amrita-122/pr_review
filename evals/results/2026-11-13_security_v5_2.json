@@ -1,0 +1,489 @@
+{
+  "suite": "pr",
+  "data_dir": "evals\\holdout\\data",
+  "agents": [
+    "security",
+    "quality"
+  ],
+  "triage": false,
+  "prompt_version": "security_v5",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-13T01:35:52+00:00",
+  "cases": 6,
+  "summary": {
+    "precision": {
+      "mean": 0.7592592592592592,
+      "min": 0.75,
+      "max": 0.7777777777777778
+    },
+    "recall": {
+      "mean": 0.9047619047619048,
+      "min": 0.8571428571428571,
+      "max": 1.0
+    },
+    "errors": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "invalid_line_rate": {
+      "mean": 0.19090909090909092,
+      "min": 0.1,
+      "max": 0.2727272727272727
+    }
+  },
+  "runs": [
+    {
+      "cases": 6,
+      "errors": 0,
+      "precision": 0.75,
+      "recall": 0.8571428571428571,
+      "true_positives": 6,
+      "false_negatives": 1,
+      "false_positives": 2,
+      "duplicates": 0,
+      "wrong_category": 1,
+      "per_category": {
+        "authz": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 0,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.0,
+          "recall": null
+        },
+        "crypto": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 0,
+          "fn": 1,
+          "fp": 0,
+          "precision": null,
+          "recall": 0.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "secrets": {
+          "tp": 0,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.0,
+          "recall": null
+        },
+        "unsafe_exec": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 1,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.5,
+          "recall": 0.5
+        },
+        "security": {
+          "tp": 5,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.8333333333333334,
+          "recall": 1.0
+        }
+      },
+      "files_total": 28,
+      "files_low": 0,
+      "clean_cases": 1,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.2727272727272727,
+      "cost_usd_total": "0.391548",
+      "cost_usd_per_case": "0.065258",
+      "tokens_in": 175084,
+      "tokens_out": 4138,
+      "latency_p50_s": 6.412810499998159,
+      "latency_p95_s": 8.22927539999364
+    },
+    {
+      "cases": 6,
+      "errors": 0,
+      "precision": 0.75,
+      "recall": 0.8571428571428571,
+      "true_positives": 6,
+      "false_negatives": 1,
+      "false_positives": 2,
+      "duplicates": 0,
+      "wrong_category": 1,
+      "per_category": {
+        "authz": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 0,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.0,
+          "recall": null
+        },
+        "crypto": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 0,
+          "fn": 1,
+          "fp": 0,
+          "precision": null,
+          "recall": 0.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 1,
+          "fn": 1,
+          "fp": 2,
+          "precision": 0.3333333333333333,
+          "recall": 0.5
+        },
+        "security": {
+          "tp": 5,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "files_total": 28,
+      "files_low": 0,
+      "clean_cases": 1,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.2,
+      "cost_usd_total": "0.391384",
+      "cost_usd_per_case": "0.06523066666666666666666666667",
+      "tokens_in": 175192,
+      "tokens_out": 4100,
+      "latency_p50_s": 3.7541840999911074,
+      "latency_p95_s": 7.335279399994761
+    },
+    {
+      "cases": 6,
+      "errors": 0,
+      "precision": 0.7777777777777778,
+      "recall": 1.0,
+      "true_positives": 7,
+      "false_negatives": 0,
+      "false_positives": 2,
+      "duplicates": 0,
+      "wrong_category": 1,
+      "per_category": {
+        "authz": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 0,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.0,
+          "recall": null
+        },
+        "crypto": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "unsafe_exec": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.5,
+          "recall": 1.0
+        },
+        "security": {
+          "tp": 5,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "files_total": 28,
+      "files_low": 0,
+      "clean_cases": 1,
+      "clean_cases_with_fp": 0,
+      "clean_false_positives": 0,
+      "invalid_line_rate": 0.1,
+      "cost_usd_total": "0.392832",
+      "cost_usd_per_case": "0.065472",
+      "tokens_in": 175136,
+      "tokens_out": 4256,
+      "latency_p50_s": 4.402468400003272,
+      "latency_p95_s": 6.275000000008731
+    }
+  ],
+  "details": [
+    [
+      {
+        "case_id": "pr_csv_export_leak",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 12,
+            "category": "bug",
+            "title": "Rows with keys not in first row crash the export"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "pr_idor_among_clean",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_large_clean_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_md5_in_two_files",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_pickle_and_swallow_with_noise",
+        "errored": false,
+        "missed": [
+          "error_handling"
+        ],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_workflow_pwn_request",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 23,
+            "category": "secrets",
+            "title": "Deploy secret exposed to untrusted PR build step"
+          }
+        ],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "pr_csv_export_leak",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "bug",
+            "title": "Fieldnames taken only from first row"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "pr_idor_among_clean",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_large_clean_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_md5_in_two_files",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_pickle_and_swallow_with_noise",
+        "errored": false,
+        "missed": [
+          "error_handling"
+        ],
+        "false_positives": [
+          {
+            "line": 21,
+            "category": "bug",
+            "title": "Backoff sleep also runs after the final failed attempt"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_workflow_pwn_request",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "pr_csv_export_leak",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 10,
+            "category": "bug",
+            "title": "Fieldnames taken only from first row"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "pr_idor_among_clean",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_large_clean_refactor",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_md5_in_two_files",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_pickle_and_swallow_with_noise",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 21,
+            "category": "bug",
+            "title": "Needless sleep after the final failed attempt"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "pr_workflow_pwn_request",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ]
+  ],
+  "total_cost_usd": "1.175764"
+}

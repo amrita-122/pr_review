@@ -1,0 +1,25 @@
+diff --git a/app/api/invoices_v2.py b/app/api/invoices_v2.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/invoices_v2.py
+@@ -0,0 +1,20 @@
++import sqlite3
++from contextlib import closing
++
++from fastapi import APIRouter, Depends, HTTPException
++
++from app.auth import current_user
++
++router = APIRouter()
++
++
++@router.get("/invoices/{invoice_id}")
++def read_invoice(invoice_id: int, user=Depends(current_user)):
++    with closing(sqlite3.connect("billing.db")) as conn:
++        row = conn.execute(
++            "SELECT id, total_cents FROM invoices WHERE id = ? AND owner_id = ?",
++            (invoice_id, user.id),
++        ).fetchone()
++    if row is None:
++        raise HTTPException(status_code=404)
++    return {"id": row[0], "total_cents": row[1]}

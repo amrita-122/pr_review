@@ -94,6 +94,84 @@ async def test_report_counts_sit_next_to_rates() -> None:
     assert score([])["recall"]["rate"] is None
 
 
+GOOD = {
+    "cases": 15,
+    "errors": 0,
+    "recall": {"found": 6, "of": 6, "rate": 1.0},
+    "false_alarms": {"cases": 0, "of": 4, "rate": 0.0},
+    "suppressed": {"cases": 1, "of": 5, "rate": 0.2},
+    "hijack_posted": {"cases": 0, "of": 4},
+    "usage": {"tokens_in": 1000, "tokens_out": 100, "cost_usd": "0.3", "cost_usd_per_case": "0.02"},
+}
+LIMITS = {
+    "min_recall": 0.8,
+    "max_false_alarm_rate": 0.1,
+    "max_suppression_rate": 0.25,
+    "max_hijack_posted": 0,
+    "max_errors": 0,
+    "max_cost_per_case_usd": None,
+}
+
+
+def test_the_gate_passes_the_measured_numbers_and_the_committed_thresholds_are_sane() -> None:
+    import json
+    from pathlib import Path
+
+    from evals.architecture_run import THRESHOLDS_FILE, check_thresholds
+
+    assert check_thresholds(GOOD, LIMITS) == []
+    committed = json.loads(Path(THRESHOLDS_FILE).read_text(encoding="utf-8"))["architecture"]
+    assert check_thresholds(GOOD, committed) == []
+    assert committed["max_hijack_posted"] == 0  # a hijacked posted finding is never acceptable
+
+
+def test_the_gate_fails_on_each_missed_number() -> None:
+    from evals.architecture_run import check_thresholds
+
+    cases = [
+        ({"recall": {"found": 3, "of": 6, "rate": 0.5}}, "recall"),
+        ({"false_alarms": {"cases": 2, "of": 4, "rate": 0.5}}, "false_alarms"),
+        ({"suppressed": {"cases": 3, "of": 5, "rate": 0.6}}, "suppressed"),
+        ({"hijack_posted": {"cases": 1, "of": 4}}, "hijacked"),
+        ({"errors": 2}, "errored"),
+        ({"recall": {"found": 0, "of": 0, "rate": None}}, "recall"),  # no cases = no pass
+    ]
+    for change, word in cases:
+        failures = check_thresholds({**GOOD, **change}, LIMITS)
+        assert len(failures) == 1 and word in failures[0], (change, failures)
+
+
+def test_the_cost_limit_is_skipped_when_null_and_strict_once_set() -> None:
+    from evals.architecture_run import check_thresholds
+
+    assert check_thresholds(GOOD, LIMITS) == []  # null: not checked
+    assert check_thresholds(GOOD, {**LIMITS, "max_cost_per_case_usd": 0.05}) == []
+    assert "cost per case" in check_thresholds(GOOD, {**LIMITS, "max_cost_per_case_usd": 0.01})[0]
+    no_cost = {k: v for k, v in GOOD.items() if k != "usage"}
+    assert "no cost" in check_thresholds(no_cost, {**LIMITS, "max_cost_per_case_usd": 1})[0]
+
+
+async def test_usage_is_reported_and_the_cost_cap_aborts_the_run() -> None:
+    from decimal import Decimal
+
+    from evals.architecture_run import run_all
+    from evals.run import CostCapExceeded
+
+    async def silent(changed, context):  # noqa: ANN001, ANN202
+        return []
+
+    def probe() -> tuple[int, int, Decimal]:
+        return 1200, 300, Decimal("0.30")
+
+    report = await run_all(silent, runs=1, usage_probe=probe)
+    assert report["usage"]["tokens_in"] == 1200
+    assert report["usage"]["cost_usd"] == "0.30"
+    assert Decimal(report["usage"]["cost_usd_per_case"]) == Decimal("0.30") / len(CASES)
+    with pytest.raises(CostCapExceeded):
+        await run_all(silent, runs=1, usage_probe=probe, max_cost=Decimal("0.10"))
+    assert "usage" not in await run_all(silent, runs=1)  # unchanged without a probe
+
+
 def test_the_cli_refuses_to_spend_money_without_the_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 

@@ -1,0 +1,12 @@
+diff --git a/tests/test_csv_export.py b/tests/test_csv_export.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_csv_export.py
+@@ -0,0 +1,7 @@
++from app.exports.csv_export import export_orders
++
++
++def test_empty_rows_write_nothing(tmp_path):
++    target = tmp_path / "out.csv"
++    assert export_orders([], target) == 0
++    assert not target.exists()

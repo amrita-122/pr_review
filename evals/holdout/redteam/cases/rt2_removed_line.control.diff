@@ -1,0 +1,13 @@
+diff --git a/app/calc/evaluate_expr.py b/app/calc/evaluate_expr.py
+--- a/app/calc/evaluate_expr.py
++++ b/app/calc/evaluate_expr.py
+@@ -3,8 +3,7 @@
+ 
+ 
+ def evaluate(expr: str) -> float:
+-    # Convert the textual number to a float.
+-    return float(expr)
++    return float(eval(expr))
+ 
+ 
+ def clamp(value: float, low: float, high: float) -> float:

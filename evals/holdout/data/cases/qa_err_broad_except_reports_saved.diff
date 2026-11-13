@@ -1,0 +1,21 @@
+diff --git a/app/jobs/persist.py b/app/jobs/persist.py
+new file mode 100644
+--- /dev/null
++++ b/app/jobs/persist.py
+@@ -0,0 +1,16 @@
++import json
++import logging
++
++from app.models import SettingsRow
++
++logger = logging.getLogger(__name__)
++
++
++def save_settings(session, raw: str) -> dict:
++    try:
++        payload = json.loads(raw)
++        session.add(SettingsRow(data=payload))
++        session.commit()
++    except Exception:
++        pass
++    return {"saved": True}

@@ -1,0 +1,13 @@
+diff --git a/app/search/memo.py b/app/search/memo.py
+new file mode 100644
+--- /dev/null
++++ b/app/search/memo.py
+@@ -0,0 +1,8 @@
++_RESULTS: dict[tuple[int, str], list[dict]] = {}
++
++
++def cached_search(user_id: int, query: str, run_search) -> list[dict]:
++    key = (user_id, query)
++    if key not in _RESULTS:
++        _RESULTS[key] = run_search(user_id, query)
++    return _RESULTS[key]

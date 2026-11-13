@@ -1,0 +1,15 @@
+diff --git a/app/reports/render_tmp.py b/app/reports/render_tmp.py
+new file mode 100644
+--- /dev/null
++++ b/app/reports/render_tmp.py
+@@ -0,0 +1,10 @@
++import os
++import tempfile
++
++
++def render_to_temp(render, data) -> str:
++    fd, path = tempfile.mkstemp(suffix=".html")
++    handle = os.fdopen(fd, "w", encoding="utf-8")
++    handle.write(render(data))
++    handle.close()
++    return path

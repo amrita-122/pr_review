@@ -1,0 +1,1036 @@
+{
+  "suite": "golden",
+  "data_dir": "evals\\holdout\\data",
+  "agents": [
+    "security",
+    "quality"
+  ],
+  "triage": false,
+  "prompt_version": "security_v5",
+  "model": "claude-sonnet-5-5",
+  "date": "2026-11-13T01:35:14+00:00",
+  "cases": 28,
+  "summary": {
+    "precision": {
+      "mean": 0.7177033492822966,
+      "min": 0.6818181818181818,
+      "max": 0.7894736842105263
+    },
+    "recall": {
+      "mean": 0.9375,
+      "min": 0.9375,
+      "max": 0.9375
+    },
+    "errors": {
+      "mean": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "invalid_line_rate": {
+      "mean": 0.2403174603174603,
+      "min": 0.21428571428571427,
+      "max": 0.26666666666666666
+    }
+  },
+  "runs": [
+    {
+      "cases": 28,
+      "errors": 0,
+      "precision": 0.7894736842105263,
+      "recall": 0.9375,
+      "true_positives": 15,
+      "false_negatives": 1,
+      "false_positives": 4,
+      "duplicates": 0,
+      "wrong_category": 1,
+      "per_category": {
+        "authz": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 1,
+          "precision": 0.8,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.5,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 2,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666
+        },
+        "secrets": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 8,
+          "fn": 1,
+          "fp": 4,
+          "precision": 0.6666666666666666,
+          "recall": 0.8888888888888888
+        },
+        "security": {
+          "tp": 7,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "files_total": 28,
+      "files_low": 0,
+      "clean_cases": 12,
+      "clean_cases_with_fp": 1,
+      "clean_false_positives": 1,
+      "invalid_line_rate": 0.24,
+      "cost_usd_total": "0.460546",
+      "cost_usd_per_case": "0.01644807142857142857142857143",
+      "tokens_in": 183038,
+      "tokens_out": 9447,
+      "latency_p50_s": 2.9361910999868996,
+      "latency_p95_s": 5.391822799996589
+    },
+    {
+      "cases": 28,
+      "errors": 0,
+      "precision": 0.6818181818181818,
+      "recall": 0.9375,
+      "true_positives": 15,
+      "false_negatives": 1,
+      "false_positives": 7,
+      "duplicates": 0,
+      "wrong_category": 1,
+      "per_category": {
+        "authz": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 4,
+          "precision": 0.5,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 2,
+          "precision": 0.5,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 2,
+          "fn": 1,
+          "fp": 1,
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666
+        },
+        "secrets": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 8,
+          "fn": 1,
+          "fp": 7,
+          "precision": 0.5333333333333333,
+          "recall": 0.8888888888888888
+        },
+        "security": {
+          "tp": 7,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "files_total": 28,
+      "files_low": 0,
+      "clean_cases": 12,
+      "clean_cases_with_fp": 2,
+      "clean_false_positives": 4,
+      "invalid_line_rate": 0.26666666666666666,
+      "cost_usd_total": "0.467544",
+      "cost_usd_per_case": "0.016698",
+      "tokens_in": 183022,
+      "tokens_out": 10150,
+      "latency_p50_s": 2.716082099999767,
+      "latency_p95_s": 6.974154300012742
+    },
+    {
+      "cases": 28,
+      "errors": 0,
+      "precision": 0.6818181818181818,
+      "recall": 0.9375,
+      "true_positives": 15,
+      "false_negatives": 1,
+      "false_positives": 7,
+      "duplicates": 0,
+      "wrong_category": 3,
+      "per_category": {
+        "authz": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "bug": {
+          "tp": 4,
+          "fn": 0,
+          "fp": 4,
+          "precision": 0.5,
+          "recall": 1.0
+        },
+        "crypto": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "error_handling": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 3,
+          "precision": 0.4,
+          "recall": 1.0
+        },
+        "injection": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "other": {
+          "tp": 2,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        },
+        "resource_leak": {
+          "tp": 2,
+          "fn": 1,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 0.6666666666666666
+        },
+        "secrets": {
+          "tp": 1,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "per_agent": {
+        "quality": {
+          "tp": 8,
+          "fn": 1,
+          "fp": 7,
+          "precision": 0.5333333333333333,
+          "recall": 0.8888888888888888
+        },
+        "security": {
+          "tp": 7,
+          "fn": 0,
+          "fp": 0,
+          "precision": 1.0,
+          "recall": 1.0
+        }
+      },
+      "files_total": 28,
+      "files_low": 0,
+      "clean_cases": 12,
+      "clean_cases_with_fp": 3,
+      "clean_false_positives": 3,
+      "invalid_line_rate": 0.21428571428571427,
+      "cost_usd_total": "0.467970",
+      "cost_usd_per_case": "0.01671321428571428571428571429",
+      "tokens_in": 183130,
+      "tokens_out": 10171,
+      "latency_p50_s": 3.012500800003181,
+      "latency_p95_s": 5.543969599995762
+    }
+  ],
+  "details": [
+    [
+      {
+        "case_id": "hn_benign_vocabulary",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_literal_eval",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_order_by_allowlist",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_owner_filtered_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_path_resolve_guard",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_preexisting_vuln_in_context",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_public_and_router_auth",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_yaml_safeloader_explicit",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_merge_keeps_old_value",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_remove_while_iterating",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_str_passed_to_hmac",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_unreachable_gold_tier",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_err_broad_except_reports_saved",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_err_returncode_ignored",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_lock_not_released",
+        "errored": false,
+        "missed": [
+          "resource_leak"
+        ],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_thread_per_request",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 12,
+            "category": "resource_leak",
+            "title": "Polling thread loops forever with no stop condition"
+          },
+          {
+            "line": 14,
+            "category": "error_handling",
+            "title": "Unhandled exception in refresh_status kills the poller silently"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_unbounded_cache",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_defensive_handlers",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 30,
+            "category": "error_handling",
+            "title": "Task failure is reported as success"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_duplicated_formatters",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_intentional_patterns",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_unused_and_dead_code",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_authz_client_supplied_owner",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_authz_header_trust",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_split_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_ssrf_redirect",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 19,
+            "category": "bug",
+            "title": "Size limit checked only after the whole body is downloaded"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "sub_toctou_mktemp",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_uuid1_reset_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_weak_sanitizer_sql",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "hn_benign_vocabulary",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_literal_eval",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 12,
+            "category": "error_handling",
+            "title": "literal_eval can raise exceptions other than ValueError/SyntaxError"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_order_by_allowlist",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_owner_filtered_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_path_resolve_guard",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_preexisting_vuln_in_context",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_public_and_router_auth",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_yaml_safeloader_explicit",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_merge_keeps_old_value",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_remove_while_iterating",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_str_passed_to_hmac",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_unreachable_gold_tier",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_err_broad_except_reports_saved",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_err_returncode_ignored",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_lock_not_released",
+        "errored": false,
+        "missed": [
+          "resource_leak"
+        ],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_thread_per_request",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 14,
+            "category": "error_handling",
+            "title": "Unhandled exception in refresh_status kills polling thread silently"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_unbounded_cache",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_defensive_handlers",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_duplicated_formatters",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 2,
+            "category": "bug",
+            "title": "None name value crashes .strip() despite get() default"
+          },
+          {
+            "line": 10,
+            "category": "bug",
+            "title": "None name value crashes .strip() despite get() default"
+          },
+          {
+            "line": 18,
+            "category": "bug",
+            "title": "None name value crashes .strip() despite get() default"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_intentional_patterns",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_unused_and_dead_code",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_authz_client_supplied_owner",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_authz_header_trust",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_split_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_ssrf_redirect",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 19,
+            "category": "bug",
+            "title": "Size limit is checked only after the whole body is downloaded"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "sub_toctou_mktemp",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 18,
+            "category": "resource_leak",
+            "title": "Temp file orphaned on disk if writing rows fails"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_uuid1_reset_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_weak_sanitizer_sql",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ],
+    [
+      {
+        "case_id": "hn_benign_vocabulary",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_literal_eval",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 12,
+            "category": "error_handling",
+            "title": "literal_eval can raise exceptions other than ValueError/SyntaxError"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_order_by_allowlist",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_owner_filtered_query",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_path_resolve_guard",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_preexisting_vuln_in_context",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_public_and_router_auth",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "hn_yaml_safeloader_explicit",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_merge_keeps_old_value",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_remove_while_iterating",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_str_passed_to_hmac",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_bug_unreachable_gold_tier",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_err_broad_except_reports_saved",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 16,
+            "category": "bug",
+            "title": "Unconditional saved=True return even when save failed"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "qa_err_returncode_ignored",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_lock_not_released",
+        "errored": false,
+        "missed": [
+          "resource_leak"
+        ],
+        "false_positives": [
+          {
+            "line": 13,
+            "category": "bug",
+            "title": "Shared total read after lock is released"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "qa_leak_thread_per_request",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 14,
+            "category": "error_handling",
+            "title": "Unhandled exception in refresh_status kills the polling thread silently"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qa_leak_unbounded_cache",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_defensive_handlers",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 30,
+            "category": "error_handling",
+            "title": "Returns True even when the task raised an exception"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_duplicated_formatters",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 2,
+            "category": "bug",
+            "title": "`.get(key, \"\").strip()` crashes when the value is None"
+          }
+        ],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_intentional_patterns",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "qn_unused_and_dead_code",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_authz_client_supplied_owner",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_authz_header_trust",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_split_secret",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_ssrf_redirect",
+        "errored": false,
+        "missed": [],
+        "false_positives": [
+          {
+            "line": 19,
+            "category": "bug",
+            "title": "Size limit checked only after the whole body is downloaded"
+          }
+        ],
+        "wrong_category": 1
+      },
+      {
+        "case_id": "sub_toctou_mktemp",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_uuid1_reset_token",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      },
+      {
+        "case_id": "sub_weak_sanitizer_sql",
+        "errored": false,
+        "missed": [],
+        "false_positives": [],
+        "wrong_category": 0
+      }
+    ]
+  ],
+  "total_cost_usd": "1.396060"
+}

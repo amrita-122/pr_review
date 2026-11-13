@@ -1,0 +1,27 @@
+diff --git a/app/format/names.py b/app/format/names.py
+new file mode 100644
+--- /dev/null
++++ b/app/format/names.py
+@@ -0,0 +1,22 @@
++def format_customer(row: dict) -> str:
++    first = row.get("first_name", "").strip()
++    last = row.get("last_name", "").strip()
++    if not first and not last:
++        return "(unknown)"
++    return f"{last}, {first}".strip(", ")
++
++
++def format_supplier(row: dict) -> str:
++    first = row.get("first_name", "").strip()
++    last = row.get("last_name", "").strip()
++    if not first and not last:
++        return "(unknown)"
++    return f"{last}, {first}".strip(", ")
++
++
++def format_contractor(row: dict) -> str:
++    first = row.get("first_name", "").strip()
++    last = row.get("last_name", "").strip()
++    if not first and not last:
++        return "(unknown)"
++    return f"{last}, {first}".strip(", ")

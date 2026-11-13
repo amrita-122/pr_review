@@ -1,0 +1,9 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,5 @@
+ # Project
+ 
+ See docs for setup.
++
++Every pull request gets a preview site.

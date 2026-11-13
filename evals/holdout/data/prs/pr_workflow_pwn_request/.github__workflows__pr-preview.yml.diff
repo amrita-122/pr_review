@@ -1,0 +1,30 @@
+diff --git a/.github/workflows/pr-preview.yml b/.github/workflows/pr-preview.yml
+new file mode 100644
+--- /dev/null
++++ b/.github/workflows/pr-preview.yml
+@@ -0,0 +1,25 @@
++name: PR preview
++
++on:
++  pull_request_target:
++    types: [opened, synchronize]
++
++permissions:
++  contents: read
++  pull-requests: write
++
++jobs:
++  preview:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          ref: ${{ github.event.pull_request.head.sha }}
++      - name: Install and build
++        run: |
++          npm ci
++          npm run build
++        env:
++          PREVIEW_TOKEN: ${{ secrets.PREVIEW_DEPLOY_TOKEN }}
++      - name: Deploy preview
++        run: ./scripts/deploy-preview.sh

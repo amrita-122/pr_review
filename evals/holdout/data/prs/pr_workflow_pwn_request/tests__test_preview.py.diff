@@ -1,0 +1,10 @@
+diff --git a/tests/test_preview.py b/tests/test_preview.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_preview.py
+@@ -0,0 +1,5 @@
++from app.preview.render import preview_url
++
++
++def test_preview_url_has_no_double_slash():
++    assert preview_url("https://previews.internal/", 7) == "https://previews.internal/pr-7/"

@@ -1,0 +1,24 @@
+diff --git a/app/routes/export_routes.py b/app/routes/export_routes.py
+new file mode 100644
+--- /dev/null
++++ b/app/routes/export_routes.py
+@@ -0,0 +1,19 @@
++from pathlib import Path
++
++from fastapi import APIRouter, Depends, HTTPException
++
++from app.auth import current_user
++from app.exports.csv_export import export_orders
++from app.orders import list_orders_for
++
++router = APIRouter()
++EXPORT_DIR = Path("/var/exports")
++
++
++@router.post("/exports/orders")
++def create_export(user=Depends(current_user)):
++    rows = list_orders_for(user.id)
++    if not rows:
++        raise HTTPException(status_code=404, detail="nothing to export")
++    count = export_orders(rows, EXPORT_DIR / f"orders-{user.id}.csv")
++    return {"exported": count}

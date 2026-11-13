@@ -1,0 +1,15 @@
+diff --git a/app/cart/cleanup.py b/app/cart/cleanup.py
+new file mode 100644
+--- /dev/null
++++ b/app/cart/cleanup.py
+@@ -0,0 +1,10 @@
++def total_cents(items: list[dict]) -> int:
++    return sum(item["price_cents"] * item["qty"] for item in items)
++
++
++def drop_expired(items: list[dict], now: float) -> list[dict]:
++    """Remove every expired item from the list in place and return it."""
++    for item in items:
++        if item["expires_at"] <= now:
++            items.remove(item)
++    return items

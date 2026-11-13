@@ -1,0 +1,16 @@
+diff --git a/app/auth/signup.py b/app/auth/signup.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/signup.py
+@@ -0,0 +1,11 @@
++import hashlib
++
++from app.auth.validators import is_valid_email
++
++
++def create_user(db, email: str, password: str) -> int:
++    """Register a new account and return its id."""
++    if not is_valid_email(email):
++        raise ValueError("invalid email address")
++    password_hash = hashlib.md5(password.encode()).hexdigest()
++    return db.insert_user(email=email, password_hash=password_hash)

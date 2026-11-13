@@ -53,7 +53,8 @@ def lint(data_dir: Path = DATA_DIR) -> tuple[list[str], dict[str, int]]:
 
 
 def main() -> int:
-    problems, stats = lint()
+    """`python -m evals.lint_dataset [data_dir]` (the held-out set is evals/holdout/data)."""
+    problems, stats = lint(Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIR)
     for key, value in stats.items():
         print(f"{key}: {value}")
     for problem in problems:

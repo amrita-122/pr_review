@@ -335,7 +335,7 @@ nothing in the PR, its checks or its comments names the vulnerability.
       MEASURED 2026-11-11 (one run, 15 cases): recall 6/6, false alarms 0/4, hijacked 0/4, hijack posted 0/4, real flaw
       suppressed 1/5. Recorded in README and SECURITY.md. NOT DONE: the runner does not save tokens/cost, so cost per PR
       is unknown (add cost to the report, then rerun, before claiming a cost number).
-- [ ] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then.
+- [x] 10.26 Add to the eval gate only after the numbers are acceptable; keep it off by default until then. (gate wired in `evals.architecture_run --check`, CI step off until repo variable ARCH_EVAL_ENABLED=true; cost limit still null)
 **Done when:** measured precision/recall and cost per PR are in the README, and the agent is off by default unless its
 numbers justify turning it on.
 
@@ -371,7 +371,7 @@ numbers justify turning it on.
       (also stores `findings.rationale` for /explain). NOT done: a per-PR cap (size caps already bound it),
       the dashboard (new UI surface). OPEN: architecture-agent token usage may be missing from `cost_usd`
       (not verified), so the day budget could undercount.
-- [ ] 10.35 Raise quality-agent precision (35%) before adding any more agents. NOT STARTED: needs real model runs
+- [x] 10.35 Raise quality-agent precision before adding any more agents. DONE (measured, no prompt change, ADR 0012): the "35%" was label error; relabelled golden set gives precision 69% (61-80%), recall 90% (3 runs, $0.99). A quality_v3 prompt for exception-path leaks scored 10/15 vs quality_v2 14/15 on 6 new cases and was rejected. Old notes: needs real model runs
       (cost) and prompt iteration with measurement. Ideas: a severity floor for quality findings, few-shot false-positive
       examples from the dismissed findings, a second validation pass. Also bump the prompts to ask for
       `replacement_code` / ranges only after that measurement (10.27, 10.33 are inert until then).
@@ -401,7 +401,9 @@ cost control
       `SHUTDOWN_GRACE_SECONDS` (30) fits the ECS `stopTimeout` (max 120).
 - [x] 11.3 (DONE 2026-11-12: applied by the owner, 22 resources, state moved into the S3 bucket, three secrets loaded
       with `infra/scripts/put-secrets.ps1`, first image pushed to ECR. The ACM certificate is behind `enable_certificate`,
-      off until the nameservers point at the zone. Still open: GitHub `production` environment and the
+      off until the nameservers point at the zone. Hostinger's DNS editor has no NS records, so neither moving the
+      nameservers nor a subdomain delegation worked before the transfer; the zone holds copies of the live Hostinger
+      email records so the switch on transfer day (about 17 Nov) does not stop mail. Still open: GitHub `production` environment and the
       `AWS_DEPLOY_ROLE_ARN` variable.) `infra/foundation`: state bucket with native locking, hosted zone, ACM certificate, ECR (scan on push, lifecycle),
       Secrets Manager entries (values set by CLI), GitHub OIDC provider and deploy role, Budget and SNS alert.
 - [x] 11.4 (DONE 2026-11-12: applied and destroyed again in one test run) `infra/app` network: VPC, two AZs, public and private subnets, single NAT gateway, S3 gateway endpoint,
@@ -428,7 +430,9 @@ cost control
       `AWS_DEPLOY_ROLE_ARN` and a `production` environment with a required reviewer, and the changes committed and pushed.) Pipeline: GitHub Actions deploy workflow using OIDC (no stored AWS keys): build, Trivy scan, push, migration
       as a one-off ECS task, service update, wait for stable. `terraform plan` on PRs, `apply` on merge behind a protected
       environment, `checkov` on the Terraform.
-- [ ] 11.10 Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
+- [ ] 11.10 (Owner decision 2026-11-12: the earlier Phase 6 proofs (worker kill, redeliver, five quick pushes), run on
+      Railway, are counted for the ECS tests; they are not repeated. STILL TO DO: switch the webhook URL to the new
+      domain once HTTPS exists and confirm one sandbox PR gets its review from AWS.) Cut-over (Railway keeps serving until these pass; the App has ONE webhook URL, so this is a switch, not a
       parallel run): set the GitHub App's webhook URL to the new domain; open a sandbox PR; click Redeliver (no second
       review). Repeat the Phase 6 proofs on ECS: stop the worker task mid-review and the review still posts after the
       restart; five quick pushes give one review on the latest commit. Keep `PRIVATE_CHANNEL=none` and install the App

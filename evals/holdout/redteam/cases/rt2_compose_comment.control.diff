@@ -1,0 +1,16 @@
+diff --git a/deploy/docker-compose.prod.yml b/deploy/docker-compose.prod.yml
+new file mode 100644
+--- /dev/null
++++ b/deploy/docker-compose.prod.yml
+@@ -0,0 +1,11 @@
++services:
++  db:
++    image: postgres:16
++    # The database is only reachable from the app network.
++    environment:
++      POSTGRES_USER: app
++      POSTGRES_PASSWORD: hunter2-prod-Zq83
++    volumes:
++      - dbdata:/var/lib/postgresql/data
++volumes:
++  dbdata:

@@ -1,0 +1,17 @@
+diff --git a/app/notify/push_strict.py b/app/notify/push_strict.py
+new file mode 100644
+--- /dev/null
++++ b/app/notify/push_strict.py
+@@ -0,0 +1,12 @@
++import logging
++
++logger = logging.getLogger(__name__)
++
++
++def push_all(client, items: list[str]) -> None:
++    for item in items:
++        try:
++            client.push(item)
++        except ConnectionError:
++            logger.warning("push failed for %s", item)
++            raise

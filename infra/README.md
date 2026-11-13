@@ -82,6 +82,10 @@ curl http://<alb_dns_name from terraform output>/health        # {"status":"ok"}
 Until HTTPS exists, test with signed requests only. Do not point the real GitHub App at the HTTP address.
 
 ## When the domain transfer is done (Route53 is the registrar)
+Why wait: until then the DNS is Hostinger's, whose DNS editor has no NS record type, so the apex cannot be moved
+and a `review.` subdomain cannot be delegated. The zone already holds copies of the live Hostinger email records (MX,
+SPF, DKIM, DMARC, autodiscover/autoconfig, in `foundation/dns.tf`), so changing the nameservers does not stop mail.
+Re-check the records at Hostinger before the switch in case anything was added since 2026-11-12.
 1. `terraform output name_servers` in `foundation`; set them as the domain's nameservers
    (Route53 > Registered domains > the domain > Name servers), or
    `aws route53domains update-domain-nameservers --region us-east-1 --domain-name <domain> --nameservers Name=<ns1> Name=<ns2> ...`.

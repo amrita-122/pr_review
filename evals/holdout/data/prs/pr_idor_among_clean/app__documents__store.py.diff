@@ -1,0 +1,34 @@
+diff --git a/app/documents/store.py b/app/documents/store.py
+new file mode 100644
+--- /dev/null
++++ b/app/documents/store.py
+@@ -0,0 +1,29 @@
++from dataclasses import dataclass, field
++
++
++@dataclass
++class Document:
++    id: int
++    owner_id: int
++    title: str
++    body: str = ""
++
++    def summary(self) -> dict:
++        return {"id": self.id, "title": self.title}
++
++    def to_dict(self) -> dict:
++        return {"id": self.id, "title": self.title, "body": self.body}
++
++
++@dataclass
++class DocumentStore:
++    _items: dict[int, Document] = field(default_factory=dict)
++
++    def add(self, doc: Document) -> None:
++        self._items[doc.id] = doc
++
++    def get(self, doc_id: int) -> Document | None:
++        return self._items.get(doc_id)
++
++    def for_owner(self, owner_id: int) -> list[Document]:
++        return [d for d in self._items.values() if d.owner_id == owner_id]

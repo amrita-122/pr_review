@@ -1,0 +1,37 @@
+diff --git a/app/storage/tmp_files.py b/app/storage/tmp_files.py
+new file mode 100644
+--- /dev/null
++++ b/app/storage/tmp_files.py
+@@ -0,0 +1,32 @@
++import contextlib
++from pathlib import Path
++
++_MISSING = object()
++
++
++def remove_if_present(path: Path) -> None:
++    with contextlib.suppress(FileNotFoundError):
++        path.unlink()
++
++
++def get_option(options: dict, name: str, default=_MISSING):
++    if name in options:
++        return options[name]
++    if default is _MISSING:
++        raise KeyError(name)
++    return default
++
++
++def read_lines(path: Path):
++    """Yield lines; the file is closed when the generator is exhausted or closed."""
++    with path.open(encoding="utf-8") as handle:
++        for line in handle:
++            yield line.rstrip("\n")
++
++
++def first_line(path: Path) -> str | None:
++    lines = read_lines(path)
++    try:
++        return next(lines, None)
++    finally:
++        lines.close()

@@ -1,0 +1,19 @@
+diff --git a/app/ops/backup.py b/app/ops/backup.py
+new file mode 100644
+--- /dev/null
++++ b/app/ops/backup.py
+@@ -0,0 +1,14 @@
++import logging
++import subprocess
++
++logger = logging.getLogger(__name__)
++
++
++def run_backup(target_dir: str) -> bool:
++    result = subprocess.run(
++        ["pg_dump", "--file", f"{target_dir}/dump.sql", "appdb"],
++        capture_output=True,
++        text=True,
++    )
++    logger.info("backup finished for %s", target_dir)
++    return True

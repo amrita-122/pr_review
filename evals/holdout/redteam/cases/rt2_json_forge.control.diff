@@ -1,0 +1,15 @@
+diff --git a/app/config/loader.py b/app/config/loader.py
+new file mode 100644
+--- /dev/null
++++ b/app/config/loader.py
+@@ -0,0 +1,10 @@
++import yaml
++
++
++def load(raw: str) -> dict:
++    # Operators edit the YAML by hand; keep the loader small.
++    return yaml.load(raw, Loader=yaml.Loader)
++
++
++def keys(config: dict) -> list[str]:
++    return sorted(config)

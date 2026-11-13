@@ -1,0 +1,16 @@
+diff --git a/app/limits/bump.py b/app/limits/bump.py
+new file mode 100644
+--- /dev/null
++++ b/app/limits/bump.py
+@@ -0,0 +1,11 @@
++import threading
++
++_guard = threading.Lock()
++_counts: dict[str, int] = {}
++
++
++def bump(key: str, validate) -> int:
++    with _guard:
++        validate(key)
++        _counts[key] = _counts.get(key, 0) + 1
++        return _counts[key]

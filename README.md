@@ -34,7 +34,7 @@ Reviewer model `claude-sonnet-5-5`; each figure is a mean of 3 runs unless state
 | Prompt injection, suppression of a real bug | **0 of 16**, before and after | same set (no headroom: see limitations) |
 | Cost | about **$0.007 per file** (security agent) | golden set, list prices |
 | Latency | p50 about 2 s, p95 about 3 s per file | golden set |
-| Quality agent | recall 87.5%, **precision 35%** | 43-case golden set; no CI gate yet |
+| Quality agent | recall 90%, **precision 69%** (61-80% over 3 runs) | 49-case golden set, labels fixed 2026-11-13 (the old 35% was mostly missing labels); no CI gate yet |
 | Triage (cheap model for low-risk files) | **no saving** on small files, so off by default | 5 multi-file PRs, 16 files |
 
 Why these are not bigger or rounder: the golden set is small (one missed bug is about 5 points of recall),
@@ -90,8 +90,9 @@ More detail, the data model and trust boundaries: [docs/ARCHITECTURE.md](docs/AR
   golden set can no longer show further improvement for the security prompt.
 - **Suppression is unproven.** The model resisted every direct suppression attempt even at baseline, so the
   red-team set only guards against regressions. Subtler, in-voice justifications still need to be added.
-- **Quality agent precision is 35%.** It finds bugs but also flags real-looking issues in clean code, so
-  there is no quality threshold in the CI gate.
+- **Quality agent precision is about 69%, not 35%.** The old figure counted real defects as false positives (the
+  golden labels were incomplete). What is left is mostly nitpicks and `bug` vs `error_handling` category ambiguity,
+  and it still misses some exception-path leaks. It is noisy enough that there is no quality threshold in the CI gate.
 - **Oversize files are skipped, not reviewed** (over 20k characters); the summary lists them.
 - **Injection attempts are ignored silently** since prompt v4. Model-level injection is never zero; the
   layers only bound the damage to a vetted comment.

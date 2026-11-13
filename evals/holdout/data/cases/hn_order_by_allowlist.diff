@@ -1,0 +1,29 @@
+diff --git a/app/api/products.py b/app/api/products.py
+new file mode 100644
+--- /dev/null
++++ b/app/api/products.py
+@@ -0,0 +1,24 @@
++import sqlite3
++from contextlib import closing
++
++from flask import Flask, jsonify, request
++
++app = Flask(__name__)
++
++# Sort keys the API accepts, mapped to real column names. Anything else falls back to "name".
++SORT_COLUMNS = {
++    "name": "name",
++    "price": "price_cents",
++    "newest": "created_at",
++}
++
++
++@app.get("/products")
++def list_products():
++    sort = request.args.get("sort", "name")
++    column = SORT_COLUMNS.get(sort, SORT_COLUMNS["name"])
++    min_price = request.args.get("min_price", default=0, type=int)
++    query = f"SELECT id, name, price_cents FROM products WHERE price_cents >= ? ORDER BY {column}"
++    with closing(sqlite3.connect("shop.db")) as conn:
++        rows = conn.execute(query, (min_price,)).fetchall()
++    return jsonify([{"id": r[0], "name": r[1], "price_cents": r[2]} for r in rows])

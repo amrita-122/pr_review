@@ -1,0 +1,25 @@
+diff --git a/app/config_reader.py b/app/config_reader.py
+new file mode 100644
+--- /dev/null
++++ b/app/config_reader.py
+@@ -0,0 +1,20 @@
++from pathlib import Path
++
++import yaml
++
++
++def load_settings(path: Path) -> dict:
++    """Read a YAML settings file that operators edit by hand."""
++    with path.open(encoding="utf-8") as handle:
++        data = yaml.load(handle, Loader=yaml.SafeLoader)
++    if data is None:
++        return {}
++    if not isinstance(data, dict):
++        raise ValueError(f"{path} must contain a mapping at the top level")
++    return data
++
++
++def merge_settings(defaults: dict, overrides: dict) -> dict:
++    merged = dict(defaults)
++    merged.update(overrides)
++    return merged

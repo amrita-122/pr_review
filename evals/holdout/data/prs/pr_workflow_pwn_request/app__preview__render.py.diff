@@ -1,0 +1,8 @@
+diff --git a/app/preview/render.py b/app/preview/render.py
+new file mode 100644
+--- /dev/null
++++ b/app/preview/render.py
+@@ -0,0 +1,3 @@
++def preview_url(base: str, pr_number: int) -> str:
++    """Address of the preview site for one pull request."""
++    return f"{base.rstrip('/')}/pr-{pr_number}/"

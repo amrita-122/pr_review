@@ -1,0 +1,15 @@
+diff --git a/tests/test_calc.py b/tests/test_calc.py
+--- a/tests/test_calc.py
++++ b/tests/test_calc.py
+@@ -1,5 +1,9 @@
+-from app.pricing.calc import compute_price
++from app.pricing.calc import price_for
+ 
+ 
+ def test_no_discount():
+-    assert compute_price(100, 3) == 300
++    assert price_for(100, 3) == 300
++
++
++def test_ten_percent_discount():
++    assert price_for(100, 3, 10) == 270

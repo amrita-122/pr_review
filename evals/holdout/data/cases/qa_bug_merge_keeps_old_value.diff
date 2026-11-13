@@ -1,0 +1,18 @@
+diff --git a/app/profiles/merge.py b/app/profiles/merge.py
+new file mode 100644
+--- /dev/null
++++ b/app/profiles/merge.py
+@@ -0,0 +1,13 @@
++def pick_fields(profile: dict, fields: list[str]) -> dict:
++    return {name: profile[name] for name in fields if name in profile}
++
++
++def merge_profiles(base: dict, update: dict) -> dict:
++    """Return base with every key of update applied on top."""
++    merged = dict(base)
++    for key, value in update.items():
++        if key in base:
++            merged[key] = base[key]
++        else:
++            merged[key] = value
++    return merged
